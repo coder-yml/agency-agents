@@ -1,5 +1,21 @@
 # OpenCode 集成
 
+> **❌ 不要这样做：**
+>
+> ```bash
+> # WRONG — will fail with schema validation errors
+> cp agency-agents/engineering/*.md .opencode/agents/
+> ```
+>
+> **✅ 请改用这种方式：**
+>
+> ```bash
+> /path/to/agency-agents/scripts/install.sh --tool opencode
+> ```
+>
+> 源文件使用命名颜色和 `tools` 字段，OpenCode 会拒绝它们。
+> 安装脚本会自动将颜色转换为 `#RRGGBB` 十六进制，并剥离不兼容字段。
+
 OpenCode 代理是存储在 `.opencode/agents/` 中的带有 YAML frontmatter 的 `.md` 文件。转换器将命名颜色映射为十六进制代码，并添加 `mode: subagent`，以便代理通过 `@agent-name` 按需调用，而非在主代理选择器中杂乱显示。
 
 ## 安装
