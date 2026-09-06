@@ -2,7 +2,7 @@
 
 由 `scripts/convert.sh --tool hermes` 生成。
 
-此集成安装一个名为 `agency-agents-router` 的 Hermes 插件，而非将 273 个生成的技能添加到 `skills.external_dirs`。Hermes 在启动时看到一个小型固定的工具界面，而完整的 Agency 阵容存储在磁盘上的 `data/agents.json` 中，并按需搜索/延迟加载。
+此集成安装一个名为 `agency-agents-router` 的 Hermes 插件，而非将数百个生成的技能添加到 `skills.external_dirs`。Hermes 在启动时看到一个小型固定的工具界面，而完整的 Agency 阵容存储在磁盘上的 `data/agents.json` 中，并按需搜索/延迟加载。
 
 生成的代理数量：273
 
@@ -11,7 +11,18 @@
 - `agency_agents_search` — 按查询/部门查找匹配的专家。
 - `agency_agents_inspect` — 检查一个专家的元数据或完整正文。
 - `agency_agents_load` — 为当前任务组合一个专家提示。
-- `agency_agents_delegate` — 在可用时通过 Hermes `delegate_task` 委托。
+- `agency_agents_delegate` — 通过 Hermes 的公开子代理生命周期进行委托。
+
+每个工具都使用 Hermes 完整的 function-tool schema 注册，包括其名称、描述和 JSON `parameters`。可用参数如下：
+
+| 工具 | 参数 |
+| --- | --- |
+| `agency_agents_search` | `query`（必填），可选 `division` 和 `limit` |
+| `agency_agents_inspect` | `agent` 或 `slug`，可选 `include_body` |
+| `agency_agents_load` | `agent` 或 `slug`，可选 `task` |
+| `agency_agents_delegate` | `agent` 或 `slug`，`task`（必填） |
+
+常见流程是：按能力搜索，取回返回的 `slug`，然后检查、加载或委托给该专家。你可以用自然语言让 Hermes 完成这些步骤；不需要直接调用工具。
 
 ## Hermes 的专家使用说明
 
@@ -43,3 +54,5 @@ ${HERMES_HOME:-~/.hermes}/plugins/agency-agents-router
 ```
 
 然后在 Hermes 配置中的 `plugins.enabled` 下启用 `agency-agents-router`。它**不会**写入 `skills.external_dirs`。
+
+安装后请重启 Hermes 或开启新会话，以便加载插件及其工具 schema。如果 Hermes 显示这些工具但没有文档中的参数，请从最新的 Agency Agents 检出重新生成并重新安装插件，然后重启 Hermes。
