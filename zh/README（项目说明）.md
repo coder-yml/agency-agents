@@ -174,6 +174,11 @@ cp engineering/*.md ~/.claude/agents/
 | 🧪 [LLM Post-Training Engineer](engineering（工程）/engineering-llm-post-training-engineer（LLM%20后训练工程师）.md) | 后训练技术栈（SFT/DPO/GRPO/RLVR） | 基于证据的实验门禁、checkpoint 完整性与故障分类 |
 | 📈 [Data Visualization Engineer](engineering（工程）/engineering-data-visualization-engineer（数据可视化工程师）.md) | 符合感知规律的真实数据可视化 | 图表选型、色盲友好配色、高性能 D3/Vega 渲染 |
 | 🧠 [Knowledge Graph Engineer](engineering（工程）/engineering-knowledge-graph-engineer（知识图谱工程师）.md) | 知识图谱、实体-关系抽取、图增强 RAG | 将文档结构化为可查询的 Neo4j 图（LangGraph）；溯源、矛盾跟踪、子图检索 |
+| 🌏 [China Network Engineer](engineering（工程）/engineering-china-network-engineer（中国网络工程师）.md) | 华为 VRP、H3C Comware、锐捷 RGOS、山石 StoneOS | 路由/交换/防火墙设计、NAT、等保 2.0 合规边界、带回滚方案的变更窗口 |
+| 🛤️ [Platform Engineer](engineering（工程）/engineering-platform-engineer（平台工程师）.md) | 内部开发者平台、黄金路径、IDP、自助基础设施 | 铺好的路脚手架、开发者体验度量、平台即产品路线图 |
+| 📑 [PDF Engine Architect](engineering（工程）/engineering-pdf-engine-architect（PDF%20引擎架构师）.md) | 确定性 HTML 转 PDF 编译、标记 PDF/UA 与 PDF/A | Playwright 渲染池、动态页面尺寸、档案级文档输出 |
+| 🎯 [ATS Validator Architect](engineering（工程）/engineering-ats-validator-architect（ATS%20校验架构师）.md) | 简历可解析性、ATS 摄入流水线 | BM25/TF-IDF 相关性评分、版面线性化审计、EU AI Act 与 NYC LL144 合规 |
+| 📑 [Universal Document Compiler](engineering（工程）/engineering-universal-document-compiler（通用文档编译器）.md) | 无 schema 文档 AST、数据形状版面推断、分页发布 | 把任意 YAML 树编译成提案、技术规格和高管档案 |
 
 ### 🎨 设计分部
 
@@ -416,6 +421,7 @@ cp engineering/*.md ~/.claude/agents/
 | 🧾 [Resume Tailor](specialized（专项）/resume-tailor（简历定制专家）.md) | 面向求职者的简历优化 | JD 映射、ATS 关键词对齐、经验与要求匹配 |
 | 🧡 [Aging Parent Care Companion](specialized（专项）/healthcare-aging-parent-care-companion（老年父母照护伙伴）.md) | 家庭照护者决策支持 | 预约/用药协调、照护团队沟通、照护者福祉（符合 HIPAA） |
 | 🏛️ [Master Plan Architect](specialized（专项）/specialized-master-plan-architect（总体规划架构师）.md) | 架构教学、红队计划批判 | 深度架构教学、风险批判、完整 Markdown 实施计划（零代码执行） |
+| 🎧 [Focus Music Architect](specialized（专项）/specialized-focus-music-architect（专注音乐架构师）.md) | 器乐专注音乐提示工程、神经声学 | 面向生成式音频模型的声景架构、BPM 曲线与双耳层 |
 
 ### 💵 财务分部
 

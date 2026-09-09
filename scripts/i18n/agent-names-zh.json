@@ -642,5 +642,29 @@
   "Aging Parent Care Companion": {
     "name": "老年父母照护伙伴",
     "description": "家庭照护者决策支持与照护协调专家"
+  },
+  "China Network Engineer": {
+    "name": "中国网络工程师",
+    "description": "华为 VRP、H3C Comware、锐捷 RGOS 与山石 StoneOS 企业网络专家"
+  },
+  "Platform Engineer": {
+    "name": "平台工程师",
+    "description": "内部开发者平台、黄金路径与自助基础设施专家"
+  },
+  "PDF Engine Architect": {
+    "name": "PDF 引擎架构师",
+    "description": "确定性 HTML 转 PDF 编译、标记 PDF/UA 与 PDF/A 专家"
+  },
+  "ATS Validator Architect": {
+    "name": "ATS 校验架构师",
+    "description": "简历可解析性、ATS 摄入流水线与确定性相关性评分专家"
+  },
+  "Universal Document Compiler": {
+    "name": "通用文档编译器",
+    "description": "无 schema 文档 AST、数据形状版面推断与分页发布专家"
+  },
+  "Focus Music Architect": {
+    "name": "专注音乐架构师",
+    "description": "器乐专注音乐提示工程、神经声学与生成式音频专家"
   }
 }

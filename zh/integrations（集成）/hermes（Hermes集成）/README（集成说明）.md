@@ -4,7 +4,7 @@
 
 此集成安装一个名为 `agency-agents-router` 的 Hermes 插件，而非将数百个生成的技能添加到 `skills.external_dirs`。Hermes 在启动时看到一个小型固定的工具界面，而完整的 Agency 阵容存储在磁盘上的 `data/agents.json` 中，并按需搜索/延迟加载。
 
-生成的代理数量：273
+生成的代理数量：279
 
 ## 暴露给 Hermes 的工具
 
