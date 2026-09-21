@@ -92,7 +92,7 @@
 ---
 name: Agent Name
 description: One-line description of the agent's specialty and focus
-color: colorname or "#hexcode"
+color: colorname or "#hexcode"        # see the note below — not any name works
 emoji: 🎯
 vibe: One-line personality hook — what makes this agent memorable
 services:                              # optional — only if the agent requires external services
@@ -153,6 +153,8 @@ Measurable outcomes:
 ## 🚀 高级能力
 Advanced techniques and approaches the agent masters
 ```
+
+**关于 `color`。** `#RRGGBB` 值始终可用。颜色*名称*只有在 `scripts/convert.sh` 的 `resolve_opencode_color()` 认识它时才有效——其他名称会在 OpenCode 集成中被静默改写成灰色，看起来像是有意选择，而不是写错了。`scripts/lint-agents.sh` 直接从转换器读取该列表，拒绝不在列表中的名称，并打印出可用名称。若要使用新名称，请在同一 PR 中把它加进该映射。
 
 ### 代理结构
 

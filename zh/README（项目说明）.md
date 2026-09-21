@@ -733,7 +733,7 @@ The Agency 与 Claude Code 原生兼容，并提供转换与安装脚本，因�
 - **[Gemini CLI](https://github.com/google-gemini/gemini-cli)** -- `.md` agent 文件 -> `~/.gemini/agents/`
 - **[OpenCode](https://opencode.ai)** — `.md` agent 文件 → `.opencode/agents/`
 - **[Cursor](https://cursor.sh)** — `.mdc` 规则文件 → `.cursor/rules/`
-- **[Aider](https://aider.chat)** — 单一 `CONVENTIONS.md` → `./CONVENTIONS.md`
+- **[Aider](https://aider.chat)** — `CONVENTIONS.md` 花名册索引 → `./CONVENTIONS.md`
 - **[Windsurf](https://codeium.com/windsurf)** — 单一 `.windsurfrules` → `./.windsurfrules`
 - **[OpenClaw](https://github.com/openclaw/openclaw)** — 每个 agent 一个 `SOUL.md` + `AGENTS.md` + `IDENTITY.md`
 - **[Qwen Code](https://github.com/QwenLM/qwen-code)** — `.md` SubAgent 文件 → `~/.qwen/agents/`
@@ -926,7 +926,7 @@ Use the @security-engineer rules to review this code.
 <details>
 <summary><strong>Aider</strong></summary>
 
-所有 agents 会被编译成一个单独的 `CONVENTIONS.md` 文件，Aider 会自动读取它。
+`CONVENTIONS.md` 是花名册索引——每个 agent 的名称、描述，以及完整指令的路径。Aider 会在整个会话中把约定文件保持在上下文里，而 279 份正文合计大约一百万 tokens，因此该文件只列出 agents，而不是把正文内联进去。
 
 ```bash
 cd /your/project
@@ -936,6 +936,11 @@ cd /your/project
 然后在你的 Aider 会话中引用 agents：
 ```
 Use the Frontend Developer agent to refactor this component.
+```
+
+若需要某个 agent 的完整指令，把它的文件读入会话：
+```
+/read-only /path/to/agency-agents/engineering/engineering-frontend-developer.md
 ```
 
 详见 [integrations/aider/README.md](integrations（集成）/aider（Aider集成）/README（集成说明）.md)。

@@ -11,7 +11,7 @@
 - **[OpenCode](#opencode)** — `opencode/` 中的 `.md` agent 文件
 - **[OpenClaw](#openclaw)** — `SOUL.md` + `AGENTS.md` + `IDENTITY.md` 工作区
 - **[Cursor](#cursor)** — `cursor/` 中的 `.mdc` 规则文件
-- **[Aider](#aider)** — `aider/` 中的 `CONVENTIONS.md`
+- **[Aider](#aider)** — `aider/` 中的 `CONVENTIONS.md` 花名册索引
 - **[Windsurf](#windsurf)** — `windsurf/` 中的 `.windsurfrules`
 - **[Kimi Code](#kimi-code)** — `kimi/` 中的 YAML agent 规范
 - **[Qwen Code](#qwen-code)** — `.qwen/agents/` 中项目范围的 `.md` SubAgents
@@ -162,7 +162,7 @@ cd /your/project && /path/to/agency-agents/scripts/install.sh --tool cursor
 
 ## Aider
 
-所有 agents 会被整合到一个单独的 `CONVENTIONS.md` 文件中，Aider 会在你的项目根目录中存在该文件时自动读取它。
+`CONVENTIONS.md` 是花名册索引——名称、描述，以及每个 agent 完整指令的路径。Aider 会在整个会话中把约定文件保持在上下文里，因此该文件只列出 agents，而不是把大约一百万 tokens 的正文内联进去。
 
 ```bash
 cd /your/project && /path/to/agency-agents/scripts/install.sh --tool aider
