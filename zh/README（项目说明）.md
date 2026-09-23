@@ -1093,12 +1093,6 @@ Use the Frontend Developer agent to review this component.
 
 ---
 
-## 🔗 相关资源
-
-- [awesome-openclaw-agents](https://github.com/mergisi/awesome-openclaw-agents) — 社区维护的 OpenClaw agent 集合（源自本仓库）
-
----
-
 ## 📜 许可证
 
 MIT License - 可自由使用，商业或个人用途均可。欢迎署名，但不是必须。
