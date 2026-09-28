@@ -66,7 +66,7 @@ cp engineering/*.md ~/.claude/agents/
 
 浏览下面的 agents，并复制/改造你需要的那些！
 
-### 选项 4：与其他工具配合使用（GitHub Copilot、Antigravity、Gemini CLI、OpenCode、OpenClaw、Cursor、Aider、Windsurf、Kimi Code、Codex、Osaurus、Hermes、Mistral Vibe）
+### 选项 4：与其他工具配合使用（GitHub Copilot、Antigravity、Gemini CLI、OpenCode、OpenClaw、Cursor、Aider、Windsurf、Kimi Code、Codex、Osaurus、Hermes、Mistral Vibe、DeepSeek Harness）
 
 ```bash
 # 步骤 1 -- 为所有支持的工具生成集成文件
@@ -89,6 +89,7 @@ cp engineering/*.md ~/.claude/agents/
 ./scripts/install.sh --tool osaurus
 ./scripts/install.sh --tool hermes
 ./scripts/install.sh --tool vibe
+./scripts/install.sh --tool dsh
 ```
 
 **只安装你需要的团队**（不是每个人都想要所有分部）：
@@ -741,6 +742,7 @@ The Agency 与 Claude Code 原生兼容，并提供转换与安装脚本，因�
 - **[Codex](https://developers.openai.com/codex/overview)** — TOML 自定义 agents → `~/.codex/agents/`
 - **Osaurus** -- `SKILL.md` skills -> `~/.osaurus/skills/`
 - **[Hermes](integrations（集成）/hermes（Hermes集成）/README（集成说明）.md)** -- lazy-router 插件 -> `~/.hermes/plugins/`
+- **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** — `SKILL.md` skills → `~/.dsh/skills/`（用户）或 `.dsh/skills/`（项目）
 
 ---
 
@@ -1044,6 +1046,34 @@ Use the Frontend Developer agent to review this component.
 ```
 
 详见 [integrations/codex/README.md](integrations（集成）/codex（Codex集成）/README（集成说明）.md)。
+</details>
+
+<details>
+<summary><strong>DeepSeek Harness</strong></summary>
+
+每个 agent 都会成为一个 DSH skill（带有 Agent-Skills frontmatter 的 `SKILL.md`），位于 `${DSH_HOME:-$HOME/.dsh}/skills/agency-<slug>/`。Skills 会被实时发现——无需重启。
+
+```bash
+./scripts/convert.sh --tool dsh
+./scripts/install.sh --tool dsh
+```
+
+自定义用户主目录：
+```bash
+DSH_HOME=~/.config/dsh ./scripts/install.sh --tool dsh
+```
+
+项目级安装（在项目根目录运行）：
+```bash
+DSH_SKILLS_DIR=.dsh/skills ./scripts/install.sh --tool dsh
+```
+
+在 DeepSeek Harness 中激活——默认可由用户和模型调用：
+```
+/agency-frontend-developer review this React component
+```
+
+详见 [integrations/dsh/README.md](integrations（集成）/dsh（DeepSeek%20Harness集成）/README（集成说明）.md)。
 </details>
 
 ---
