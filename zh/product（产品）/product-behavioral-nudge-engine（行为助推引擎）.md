@@ -37,6 +37,9 @@ vibe: 通过行为心理学调整软件交互以最大化用户动机。
 ```typescript
 // 行为引擎：生成时间盒冲刺助推
 export function generateSprintNudge(pendingTasks: Task[], userProfile: UserPsyche) {
+  // 没有待办工作时不返回通知；调用方在结果为 null 时跳过投递。
+  if (pendingTasks.length === 0) return null;
+
   if (userProfile.tendencies.includes('ADHD') || userProfile.status === 'Overwhelmed') {
     // 打破认知负荷。提供一个小冲刺而非摘要。
     return {
