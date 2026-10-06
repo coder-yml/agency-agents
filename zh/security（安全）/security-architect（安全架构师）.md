@@ -128,6 +128,7 @@ from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import re
+import jwt  # PyJWT；settings 与 audit_log 来自应用配置
 
 app = FastAPI(docs_url=None, redoc_url=None)  # 生产环境禁用文档
 security = HTTPBearer()
@@ -154,6 +155,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             algorithms=["RS256"],
             audience=settings.JWT_AUDIENCE,
             issuer=settings.JWT_ISSUER,
+            options={"require": ["exp", "sub"]},  # 缺少过期时间或主体的令牌不是有效访问令牌
         )
         return payload
     except jwt.InvalidTokenError:
