@@ -102,6 +102,15 @@ Browse the agents below and copy/adapt the ones you need!
 ./scripts/install.sh --tool opencode --division engineering --dry-run
 ```
 
+`--agent` and `--agents-file` take an agent's slug (as `--list agents` prints it), its display name, or its file name without `.md` — the id the [runbook rosters](strategy/runbooks.json) use — so a runbook's team installs as listed:
+
+```bash
+python3 -c 'import json, sys
+for r in json.load(open("strategy/runbooks.json"))["runbooks"]:
+    if r["slug"] == sys.argv[1]: [print(a) for g in r["roster"] for a in g["agents"]]' startup-mvp > team.txt
+./scripts/install.sh --tool claude-code --agents-file team.txt
+```
+
 > **OpenCode note:** OpenCode's runtime currently registers only ~119 agents and silently drops the rest ([upstream bug](https://github.com/anomalyco/opencode/issues/27988)). Installing a subset with `--division` keeps you under that limit. The installer warns you when a selection would exceed it.
 
 See the [Multi-Tool Integrations](#-multi-tool-integrations) section below for full details.
@@ -180,6 +189,7 @@ Building the future, one commit at a time.
 | 📑 [PDF Engine Architect](engineering/engineering-pdf-engine-architect.md) | Deterministic HTML-to-PDF compilation, tagged PDF/UA and PDF/A | Playwright render pools, dynamic page sizing, archival-grade document output |
 | 🎯 [ATS Validator Architect](engineering/engineering-ats-validator-architect.md) | Resume parseability, ATS ingestion pipelines | BM25/TF-IDF relevance scoring, layout linearization audits, EU AI Act and NYC LL144 compliance |
 | 📑 [Universal Document Compiler](engineering/engineering-universal-document-compiler.md) | Schema-agnostic document ASTs, data-shape layout inference, paged publishing | Compiling arbitrary YAML trees into proposals, technical specs, executive dossiers |
+| 🛠️ [ServiceNow Developer & Mentor](engineering/engineering-servicenow-developer-mentor.md) | Business Rules, Script Includes, GlideAjax, ACLs, Flow Designer | ServiceNow development and step-by-step instance troubleshooting |
 
 ### 🎨 Design Division
 
@@ -242,6 +252,7 @@ Growing your audience, one authentic interaction at a time.
 | 📱 [TikTok Strategist](marketing/marketing-tiktok-strategist.md) | Viral content, algorithm optimization | TikTok growth, viral content, Gen Z/Millennial audience |
 | 📸 [Instagram Curator](marketing/marketing-instagram-curator.md) | Visual storytelling, community building | Instagram strategy, aesthetic development, visual content |
 | 🤝 [Reddit Community Builder](marketing/marketing-reddit-community-builder.md) | Authentic engagement, value-driven content | Reddit strategy, community trust, authentic marketing |
+| 🌱 [Developer Community Builder](marketing/marketing-developer-community-builder.md) | Discord/forum architecture, contributor programs, community health | Building developer communities that members actually value |
 | 📱 [App Store Optimizer](marketing/marketing-app-store-optimizer.md) | ASO, conversion optimization, discoverability | App marketing, store optimization, app growth |
 | 🌐 [Social Media Strategist](marketing/marketing-social-media-strategist.md) | Cross-platform strategy, campaigns | Overall social strategy, multi-platform campaigns |
 | 📕 [Xiaohongshu Specialist](marketing/marketing-xiaohongshu-specialist.md) | Lifestyle content, trend-driven strategy | Xiaohongshu growth, aesthetic storytelling, Gen Z audience |
@@ -281,6 +292,7 @@ Building the right thing at the right time.
 | 🎯 [Sprint Prioritizer](product/product-sprint-prioritizer.md) | Agile planning, feature prioritization | Sprint planning, resource allocation, backlog management |
 | 🔍 [Trend Researcher](product/product-trend-researcher.md) | Market intelligence, competitive analysis | Market research, opportunity assessment, trend identification |
 | 💬 [Feedback Synthesizer](product/product-feedback-synthesizer.md) | User feedback analysis, insights extraction | Feedback analysis, user insights, product priorities |
+| 🔬 [DX Engineer](product/product-dx-engineer.md) | Onboarding friction, SDK ergonomics, error messages | Cutting a developer's time to first success |
 | 🧠 [Behavioral Nudge Engine](product/product-behavioral-nudge-engine.md) | Behavioral psychology, nudge design, engagement | Maximizing user motivation through behavioral science |
 | 🧭 [Product Manager](product/product-manager.md) | Full lifecycle product ownership | Discovery, PRDs, roadmap planning, GTM, outcome measurement |
 
@@ -930,7 +942,7 @@ See [integrations/cursor/README.md](integrations/cursor/README.md) for details.
 
 `CONVENTIONS.md` is the roster index — every agent's name, description, and the
 path to its full instructions. Aider keeps a conventions file in context for the
-whole session, and the 279 bodies together are about a million tokens, so the
+whole session, and the full agent bodies together are about a million tokens, so the
 file lists the agents rather than inlining them.
 
 ```bash

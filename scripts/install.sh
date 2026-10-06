@@ -33,8 +33,9 @@
 # Selection (compose freely; empty = everything):
 #   --tool <a,b>          Only these tools
 #   --division <a,b>      Only these teams/divisions (comma-separated)
-#   --agent <slug,slug>   Only these specific agents
-#   --agents-file <path>  Agents listed in a file (one slug/name per line, # comments ok)
+#   --agent <id,id>       Only these specific agents (install slug, display name,
+#                         or file stem such as engineering-frontend-developer)
+#   --agents-file <path>  Agents listed in a file (one id per line, # comments ok)
 #
 # Mode:
 #   --link                Symlink instead of copy (updates propagate)
@@ -165,6 +166,7 @@ AGENTS_FILE=""           # --agents-file
 DRY_RUN=false            # --dry-run
 SELECTION_ACTIVE=false   # true once any agent-level filter is applied
 _ALLOWED_SLUGS=""        # newline-delimited cache of allowed slugs
+_ROSTER_INDEX=""         # "<install slug>\t<file stem>" per agent; see roster_index
 
 # division_files <division> — agent file paths (frontmatter only) in a division.
 division_files() {
@@ -178,16 +180,43 @@ division_files() {
 # division_count <division> — number of agents in a division.
 division_count() { division_files "$1" | grep -c . ; }
 
-# agent_slug_exists <slug> — verify a requested agent against the source roster.
-# Selection filters should fail before installation when they name nothing that
-# can be installed; otherwise dry-run counts and completion messages lie.
-agent_slug_exists() {
-  local target="$1" div f
+# roster_index — fill _ROSTER_INDEX with one "<install slug>\t<file stem>" line
+# per agent, once. Call it in the parent shell before resolve_agent: a $(...)
+# caller would build its own copy and throw it away.
+#
+# Resolving each requested agent used to rescan the roster, running get_field
+# on all 279 files per request, so a 36-agent runbook roster cost ~10,000
+# get_field calls before anything installed.
+roster_index() {
+  [[ -n "$_ROSTER_INDEX" ]] && return 0
+  local div f
   for div in "${ALL_DIVISIONS[@]}"; do
     while IFS= read -r f; do
-      [[ "$(agent_slug "$f")" == "$target" ]] && return 0
+      _ROSTER_INDEX+="$(agent_slug "$f")"$'\t'"$(basename "$f" .md)"$'\n'
     done < <(division_files "$div")
   done
+}
+
+# resolve_agent <requested> — print the install slug for a requested agent,
+# 1 if nothing matches. Selection filters should fail before installation when
+# they name nothing that can be installed; otherwise dry-run counts and
+# completion messages lie.
+#
+# Two spellings name an agent. The install slug comes from `name:` and is what
+# --list agents prints. The file stem is the corpus id strategy/runbooks.json
+# uses ("engineering-frontend-developer"), and for 206 of 279 agents it is not
+# the slug, so 35 of the 36 agents the runbooks list could not be selected by
+# the ids the runbooks give. Slugs are tried first; no stem equals another
+# agent's slug today, and slug-first keeps it unambiguous if one ever does.
+resolve_agent() {
+  local target="$1" slug stem
+  [[ -n "$target" ]] || return 1
+  while IFS=$'\t' read -r slug stem; do
+    [[ -n "$slug" && "$slug" == "$target" ]] && { printf '%s' "$slug"; return 0; }
+  done <<< "$_ROSTER_INDEX"
+  while IFS=$'\t' read -r slug stem; do
+    [[ -n "$slug" && "$stem" == "$target" ]] && { printf '%s' "$slug"; return 0; }
+  done <<< "$_ROSTER_INDEX"
   return 1
 }
 
@@ -199,7 +228,8 @@ build_selection() {
     return
   fi
   SELECTION_ACTIVE=true
-  local slugs="" div f s line requested
+  local slugs="" div f s line requested resolved
+  roster_index
   for div in ${FILTER_DIVISIONS[@]+"${FILTER_DIVISIONS[@]}"}; do
     while IFS= read -r f; do
       s="$(agent_slug "$f")"; [[ -n "$s" ]] && slugs+="$s"$'\n'
@@ -207,11 +237,11 @@ build_selection() {
   done
   for s in ${FILTER_AGENTS[@]+"${FILTER_AGENTS[@]}"}; do
     requested="$(slugify "$s")"
-    if ! agent_slug_exists "$requested"; then
+    if ! resolved="$(resolve_agent "$requested")"; then
       err "Unknown agent '$s'. Use --list agents to see the available roster."
       exit 1
     fi
-    slugs+="$requested"$'\n'
+    slugs+="$resolved"$'\n'
   done
   if [[ -n "$AGENTS_FILE" ]]; then
     [[ -f "$AGENTS_FILE" ]] || { err "agents-file not found: $AGENTS_FILE"; exit 1; }
@@ -220,11 +250,11 @@ build_selection() {
       line="$(printf '%s' "$line" | xargs 2>/dev/null)" # trim
       [[ -z "$line" ]] && continue
       requested="$(slugify "$line")"
-      if ! agent_slug_exists "$requested"; then
+      if ! resolved="$(resolve_agent "$requested")"; then
         err "Unknown agent '$line' in agents-file '$AGENTS_FILE'."
         exit 1
       fi
-      slugs+="$requested"$'\n'
+      slugs+="$resolved"$'\n'
     done < "$AGENTS_FILE"
   fi
   _ALLOWED_SLUGS="$(printf '%s' "$slugs" | sort -u | sed '/^$/d')"
@@ -235,7 +265,9 @@ build_selection() {
 slug_allowed() {
   $SELECTION_ACTIVE || return 0
   local s="${1#agency-}"
-  printf '%s\n' "$_ALLOWED_SLUGS" | grep -qxF "$s"
+  # grep -q closes a pipe as soon as it finds an early match. With pipefail,
+  # printf may then get SIGPIPE and make a valid slug look unselected.
+  grep -qxF "$s" <<< "$_ALLOWED_SLUGS"
 }
 
 # selected_agent_count — how many agents the current selection installs.
@@ -281,22 +313,73 @@ OVERRIDE_PATH=""      # --path (single-destination override)
 
 # install_file <src> <dest> — copy, or symlink when --link is set.
 install_file() {
-  if $USE_LINK; then ln -sf "$1" "$2"; else cp "$1" "$2"; fi
+  local target="$2"
+  # Directory destinations have a trailing slash. Do not follow a leaf
+  # symlink to a directory when deciding which file belongs to the installer.
+  if [[ "$target" == */ ]] || { ! $USE_LINK && [[ -d "$target" ]]; }; then
+    target="${target%/}/$(basename "$1")"
+  fi
+  if [[ -L "$target" ]]; then
+    local link_to; link_to="$(readlink "$target")"
+    if [[ "$link_to" == "$REPO_ROOT/"* ]]; then
+      # An installer-owned link may be refreshed or switched to a copy.
+      rm -f -- "$target"
+    else
+      warn "Skipped $target — it is a symlink to $link_to; not overwriting it."
+      [[ -n "${SKIPPED_LOG:-}" ]] && printf '%s -> %s\n' "$target" "$link_to" >> "$SKIPPED_LOG"
+      return 0
+    fi
+  elif $USE_LINK && [[ -e "$target" ]]; then
+    warn "Skipped $target — it already exists; not replacing it with a symlink."
+    [[ -n "${SKIPPED_LOG:-}" ]] && printf '%s (existing file)\n' "$target" >> "$SKIPPED_LOG"
+    return 0
+  fi
+  if $USE_LINK; then
+    ln -s "$1" "$target"
+  else
+    cp "$1" "$2"
+  fi
 }
 
 # resolve_dest <tool> <default> — --path > $ENV_VAR > default.
 # path_collision_group <tool> — tools in the same group write identical
 # filenames into a shared --path and would overwrite each other; empty means
 # the tool's output is distinct and may share a path with anything. Derived by
-# installing one agent with every tool into a sandbox and comparing what
-# landed; re-measure if a converter's output naming changes.
+# installing agents with every tool into a sandbox and comparing what landed;
+# re-measure if a converter's output naming changes.
+#
+# claude-code and copilot copy the source file under its own name. For most
+# agents that is <division>-<slug>.md, but 73 of 279 are named <slug>.md
+# already (all of game-development/, most of specialized/), and for those the
+# name is exactly what gemini-cli, opencode, qwen and zcode write. Measuring
+# with one engineering agent missed that, so `--tool claude-code,qwen --path X`
+# reported both installs OK while qwen overwrote the Claude Code file. One
+# group, because a full install collides on 73 files, not zero.
 path_collision_group() {
   case "$1" in
-    claude-code|copilot)             printf 'raw-source-md' ;;  # <division>-<slug>.md
-    gemini-cli|opencode|qwen|zcode)  printf 'slug-md' ;;        # <slug>.md
+    claude-code|copilot|gemini-cli|opencode|qwen|zcode)
+                                     printf 'agent-md' ;;       # <slug>.md, or the source's name
     antigravity|osaurus|dsh)         printf 'agency-skill' ;;   # agency-<slug>/SKILL.md
     *)                               printf '' ;;
   esac
+}
+
+# Validate after tool selection so --tool all and the interactive picker get
+# the same protection as an explicit comma-separated list.
+validate_path_collisions() {
+  [[ -n "$OVERRIDE_PATH" && $# -gt 1 ]] || return 0
+  local _ta _tb _ga _gb
+  for _ta in "$@"; do
+    _ga="$(path_collision_group "$_ta")"; [[ -z "$_ga" ]] && continue
+    for _tb in "$@"; do
+      [[ "$_tb" == "$_ta" ]] && continue
+      _gb="$(path_collision_group "$_tb")"
+      if [[ "$_ga" == "$_gb" ]]; then
+        err "--path is one shared directory, and $_ta and $_tb write the same filenames into it — they would overwrite each other. Use one of them per --path (tools with distinct outputs may share one)."
+        return 1
+      fi
+    done
+  done
 }
 
 resolve_dest() {
@@ -361,9 +444,18 @@ ensure_converted() {
   # other than the README count as output.
   if [[ ! -d "$d" ]] || [[ -z "$(find "$d" -type f ! -name 'README.md' 2>/dev/null | head -1)" ]]; then
     warn "$tool: integration files missing — running convert.sh --tool $tool"
-    "$SCRIPT_DIR/convert.sh" --tool "$tool" >/dev/null 2>&1 \
-      && ok "$tool: generated integration files" \
-      || err "$tool: convert.sh failed; run it manually"
+    if "$SCRIPT_DIR/convert.sh" --tool "$tool" >/dev/null 2>&1; then
+      ok "$tool: generated integration files"
+    else
+      # A failed conversion may have written only part of the roster. Remove
+      # that partial output so the next install retries conversion instead of
+      # treating it as a complete generated integration.
+      if [[ -d "$d" ]]; then
+        find "$d" -mindepth 1 -maxdepth 1 ! -name 'README.md' -exec rm -rf {} +
+      fi
+      err "$tool: convert.sh failed; run it manually"
+      return 1
+    fi
   fi
 }
 AUTO_CONVERT=true     # --no-convert disables
@@ -406,9 +498,14 @@ usage() {
   # (excluding the sentinel lines themselves) and strip the leading "# ".
   # Using sentinels instead of hard-coded line numbers means adding lines
   # to the header comment block won't silently break --help output.
-  sed -n '/^# --- USAGE-START ---/,/^# --- USAGE-END ---/p' "$0" \
-    | sed -e '1d;$d' -e 's/^# \{0,1\}//'
-  exit 0
+  # An unknown option passes 1: the text goes to stderr and the exit is
+  # non-zero, so a mistyped flag in CI or a wrapper script is not a success.
+  local status="${1:-0}"
+  local text
+  text="$(sed -n '/^# --- USAGE-START ---/,/^# --- USAGE-END ---/p' "$0" \
+    | sed -e '1d;$d' -e 's/^# \{0,1\}//')"
+  if (( status == 0 )); then printf '%s\n' "$text"; else printf '%s\n' "$text" >&2; fi
+  exit "$status"
 }
 
 # Default parallel job count (nproc on Linux; sysctl on macOS when nproc missing)
@@ -779,21 +876,27 @@ install_claude_code() {
 
 install_copilot() {
   local dest_github; dest_github="$(resolve_dest copilot "${HOME}/.github/agents")"
-  local dest_copilot="${HOME}/.copilot/agents"
+  local dest_copilot=""
+  # The two default locations are intentional, but an explicit destination
+  # must not also write into the user's default Copilot directory.
+  if [[ -z "$OVERRIDE_PATH" && -z "${COPILOT_AGENT_DIR:-}" ]]; then
+    dest_copilot="${HOME}/.copilot/agents"
+  fi
   local count=0 dir f slug
-  mkdir -p "$dest_github" "$dest_copilot"
+  mkdir -p "$dest_github"
+  [[ -n "$dest_copilot" ]] && mkdir -p "$dest_copilot"
   for dir in "${AGENT_DIRS[@]}"; do
     [[ -d "$REPO_ROOT/$dir" ]] || continue
     while IFS= read -r -d '' f; do
       is_agent_file "$f" || continue
       slug="$(agent_slug "$f")"; slug_allowed "$slug" || continue
       install_file "$f" "$dest_github/"
-      install_file "$f" "$dest_copilot/"
+      [[ -n "$dest_copilot" ]] && install_file "$f" "$dest_copilot/"
       incr count
     done < <(find "$REPO_ROOT/$dir" -name "*.md" -type f -print0)
   done
   ok "Copilot: $count agents -> $dest_github"
-  ok "Copilot: $count agents -> $dest_copilot"
+  [[ -n "$dest_copilot" ]] && ok "Copilot: $count agents -> $dest_copilot"
   warn "Copilot: Verify VS Code setting 'chat.agentFilesLocations' includes your install path."
   dim  "         Open Settings (Ctrl/Cmd+,) -> search 'chat.agentFilesLocations'"
 }
@@ -898,10 +1001,19 @@ install_openclaw() {
   local dest; dest="$(resolve_dest openclaw "${HOME}/.openclaw/agency-agents")"
   local count=0
   local existing_agents=""
+  local failed_names=""   # a string, not an array: bash 3.2 + set -u rejects "${empty[@]}"
   [[ -d "$src" ]] || { err "integrations/openclaw missing. Run convert.sh first."; return 1; }
   mkdir -p "$dest"
   if command -v openclaw >/dev/null 2>&1; then
-    existing_agents=$'\n'"$(openclaw agents list --json 2>/dev/null | sed -n 's/^[[:space:]]*\"id\": \"\\([^\"]*\\)\".*/\\1/p')"$'\n'
+    local agents_json
+    if ! agents_json="$(openclaw agents list --json 2>/dev/null)"; then
+      err "OpenClaw: could not list registered agents; refusing to guess which workspaces need registration."
+      return 1
+    fi
+    # IDs may appear in compact or pretty JSON, and several may share a line.
+    # Agent IDs are slugs, so quoted id tokens need no JSON parser dependency.
+    existing_agents=$'\n'"$(printf '%s' "$agents_json" | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]*"' \
+      | sed -E 's/^"id"[[:space:]]*:[[:space:]]*"([^"]*)"$/\1/' || true)"$'\n'
   fi
   local d
   while IFS= read -r -d '' d; do
@@ -914,7 +1026,12 @@ install_openclaw() {
     install_file "$d/IDENTITY.md" "$dest/$name/IDENTITY.md"
     if command -v openclaw >/dev/null 2>&1; then
       if [[ "$existing_agents" != *$'\n'"$name"$'\n'* ]]; then
-        openclaw agents add "$name" --workspace "$dest/$name" --non-interactive || true
+        if ! openclaw agents add "$name" --workspace "$dest/$name" --non-interactive; then
+          err "OpenClaw: failed to register '$name'; the copied workspace is not active."
+          # Keep registering the rest: one bad registration must not cost the others.
+          failed_names="${failed_names:+$failed_names }$name"
+          continue
+        fi
       fi
     fi
     (( count++ )) || true
@@ -926,6 +1043,10 @@ install_openclaw() {
   ok "OpenClaw: $count workspaces -> $dest"
   if command -v openclaw >/dev/null 2>&1; then
     warn "OpenClaw: run 'openclaw gateway restart' to activate new agents"
+  fi
+  if [[ -n "$failed_names" ]]; then
+    err "OpenClaw: not registered: $failed_names. Their workspaces are copied; re-run to retry registration."
+    return 1
   fi
 }
 
@@ -946,8 +1067,10 @@ install_cursor() {
 
 install_aider() {
   local src="$INTEGRATIONS/aider/CONVENTIONS.md"
-  local dest="${PWD}/CONVENTIONS.md"
+  local dest_dir; dest_dir="$(resolve_dest aider "$PWD")"
+  local dest="$dest_dir/CONVENTIONS.md"
   [[ -f "$src" ]] || { err "integrations/aider/CONVENTIONS.md missing. Run convert.sh first."; return 1; }
+  mkdir -p "$dest_dir"
   if [[ -f "$dest" ]]; then
     # Never overwrite: CONVENTIONS.md is aider's own user-authored file, and the
     # one sitting here may well be the reader's rather than ours. But the guard
@@ -977,8 +1100,10 @@ install_aider() {
 
 install_windsurf() {
   local src="$INTEGRATIONS/windsurf/.windsurfrules"
-  local dest="${PWD}/.windsurfrules"
+  local dest_dir; dest_dir="$(resolve_dest windsurf "$PWD")"
+  local dest="$dest_dir/.windsurfrules"
   [[ -f "$src" ]] || { err "integrations/windsurf/.windsurfrules missing. Run convert.sh first."; return 1; }
+  mkdir -p "$dest_dir"
   if [[ -f "$dest" ]]; then
     warn "Windsurf: .windsurfrules already exists at $dest (remove to reinstall)."
     return 0
@@ -1353,6 +1478,9 @@ install_hermes() {
   local src="$INTEGRATIONS/hermes/agency-agents-router"
   local hermes_home; hermes_home="$(hermes_home_dir)"
   local dest; dest="$(resolve_dest hermes "${hermes_home}/plugins/agency-agents-router")"
+  # Strip trailing slashes first: basename ignores them, but `rm -rf link/`
+  # follows a symlink and empties its target instead of removing the link.
+  while [[ "$dest" == */ && "$dest" != "/" ]]; do dest="${dest%/}"; done
   # HERMES_PLUGIN_DIR is ambiguous: its name invites setting it to the plugins
   # parent (~/.hermes/plugins) rather than the full plugin path. Always target
   # the agency-agents-router subdir so we never rm -rf a shared plugins dir that
@@ -1370,7 +1498,22 @@ install_hermes() {
     err "Hermes: refusing to remove '$dest' — expected an agency-agents-router directory."
     return 1
   fi
-  rm -rf "$dest"
+  # The basename alone does not establish ownership: --path or an existing
+  # Hermes setup may point here with unrelated user files. Replace only a
+  # previous copy of this plugin, identified by its generated manifest.
+  if [[ -e "$dest" || -L "$dest" ]]; then
+    if [[ ! -f "$dest/plugin.yaml" ]] || \
+       ! grep -Eq '^[[:space:]]*name:[[:space:]]*agency-agents-router[[:space:]]*$' "$dest/plugin.yaml"; then
+      err "Hermes: refusing to replace '$dest' because it is not an existing agency-agents-router plugin."
+      return 1
+    fi
+  fi
+  # A symlink (e.g. from an earlier --link install) is replaced, never followed.
+  if [[ -L "$dest" ]]; then
+    rm -f -- "$dest"
+  else
+    rm -rf -- "$dest"
+  fi
   if $USE_LINK; then
     ln -s "$src" "$dest"
   else
@@ -1418,6 +1561,9 @@ install_tool() {
 # Entry point
 # ---------------------------------------------------------------------------
 main() {
+  SKIPPED_LOG="$(mktemp "${TMPDIR:-/tmp}/agency-install-skipped.XXXXXX")"
+  export SKIPPED_LOG
+  trap 'rm -f "$SKIPPED_LOG"' EXIT
   local tool="all"
   local interactive_mode="auto"
   local use_parallel=false
@@ -1454,7 +1600,7 @@ main() {
       --parallel)        use_parallel=true; shift ;;
       --jobs)            parallel_jobs="${2:?'--jobs requires a value'}"; shift 2 ;;
       --help|-h)         usage ;;
-      *)                 err "Unknown option: $1"; usage ;;
+      *)                 err "Unknown option: $1"; usage 1 ;;
     esac
   done
 
@@ -1486,23 +1632,6 @@ main() {
       $duplicate || _cleaned+=("$_t")
     done
     _tool_list=("${_cleaned[@]}")
-    # --path is one shared directory. Tools that write the same filenames into
-    # it silently overwrite each other; tools with distinct outputs coexist.
-    # Refuse only the colliding combinations (see path_collision_group).
-    if [[ -n "$OVERRIDE_PATH" && ${#_tool_list[@]} -gt 1 ]]; then
-      local _ta _tb _ga _gb
-      for _ta in "${_tool_list[@]}"; do
-        _ga="$(path_collision_group "$_ta")"; [[ -z "$_ga" ]] && continue
-        for _tb in "${_tool_list[@]}"; do
-          [[ "$_tb" == "$_ta" ]] && continue
-          _gb="$(path_collision_group "$_tb")"
-          if [[ "$_ga" == "$_gb" ]]; then
-            err "--path is one shared directory, and $_ta and $_tb write the same filenames into it — they would overwrite each other. Use one of them per --path (tools with distinct outputs may share one)."
-            exit 1
-          fi
-        done
-      done
-    fi
   fi
 
   # Decide whether to show interactive UI
@@ -1543,6 +1672,9 @@ main() {
     dim "  Available: ${ALL_TOOLS[*]}"
     exit 0
   fi
+
+  # --tool all and the interactive wizard only know their selected tools now.
+  validate_path_collisions "${SELECTED_TOOLS[@]}"
 
   # --dry-run: print the plan and exit without writing anything.
   if $DRY_RUN; then
@@ -1591,18 +1723,20 @@ main() {
   fi
   printf "\n"
 
-  local installed=0 t i=0
+  local installed=0 t i=0 rc
+  local failed=()
   if $use_parallel; then
-    local install_out_dir
+    local install_out_dir install_status=0
     install_out_dir="$(mktemp -d)"
     export AGENCY_INSTALL_OUT_DIR="$install_out_dir"
     export AGENCY_INSTALL_SCRIPT="$SCRIPT_DIR/install.sh"
     export AGENCY_INSTALL_EXTRA="$(worker_flags)"
-    printf '%s\n' "${SELECTED_TOOLS[@]}" | xargs -P "$parallel_jobs" -I {} sh -c 'AGENCY_INSTALL_WORKER=1 "$AGENCY_INSTALL_SCRIPT" --tool "{}" --no-interactive $AGENCY_INSTALL_EXTRA > "$AGENCY_INSTALL_OUT_DIR/{}" 2>&1'
+    printf '%s\n' "${SELECTED_TOOLS[@]}" | xargs -P "$parallel_jobs" -I {} sh -c 'AGENCY_INSTALL_WORKER=1 "$AGENCY_INSTALL_SCRIPT" --tool "{}" --no-interactive $AGENCY_INSTALL_EXTRA > "$AGENCY_INSTALL_OUT_DIR/{}" 2>&1' || install_status=$?
     for t in "${SELECTED_TOOLS[@]}"; do
       [[ -f "$install_out_dir/$t" ]] && cat "$install_out_dir/$t"
     done
     rm -rf "$install_out_dir"
+    [[ "$install_status" -eq 0 ]] || return "$install_status"
     installed=$n_selected
   else
     for t in "${SELECTED_TOOLS[@]}"; do
@@ -1610,20 +1744,50 @@ main() {
       progress_bar "$i" "$n_selected"
       printf "\n"
       printf "  ${C_DIM}[%s/%s]${C_RESET} %s\n" "$i" "$n_selected" "$t"
-      install_tool "$t"
-      (( installed++ )) || true
+      # One tool failing must not cost the tools after it. A bare
+      # install_tool under set -e exited the whole script at the first
+      # `return 1`, so a missing integrations/cursor meant qwen, codex and
+      # every later tool were never tried and nothing said so.
+      #
+      # Not `install_tool "$t" || ...`: bash ignores errexit inside anything
+      # run on the left of || (subshell included), so a failing cp inside a
+      # tool would carry on as if it had worked. The subshell turns errexit
+      # back on for itself while the parent's is off for this one command.
+      set +e
+      ( set -e; install_tool "$t" )
+      rc=$?
+      set -e
+      if (( rc == 0 )); then
+        (( installed++ )) || true
+      else
+        failed+=("$t")
+      fi
     done
   fi
 
   # Done box
   local msg="  Done!  Installed $installed tool(s)."
+  (( ${#failed[@]} )) && msg="  Installed $installed of $n_selected tool(s)."
   printf "\n"
   box_top
-  box_row "${C_GREEN}${C_BOLD}${msg}${C_RESET}"
+  if (( ${#failed[@]} )); then
+    box_row "${C_YELLOW}${C_BOLD}${msg}${C_RESET}"
+  else
+    box_row "${C_GREEN}${C_BOLD}${msg}${C_RESET}"
+  fi
   box_bot
   printf "\n"
+  if [[ -s "$SKIPPED_LOG" ]]; then
+    warn "Not installed: $(wc -l < "$SKIPPED_LOG" | tr -d ' ') file(s) whose destination is an existing user file or foreign symlink:"
+    sed 's/^/    /' "$SKIPPED_LOG" >&2
+    warn "Move or remove those destinations, then re-run to install them."
+  fi
   dim "  Run ./scripts/convert.sh to regenerate after adding or editing agents."
   printf "\n"
+  if (( ${#failed[@]} )); then
+    err "Failed: ${failed[*]} — see the [ERR] line under each above. The other tools installed."
+    exit 1
+  fi
 }
 
 main "$@"
