@@ -151,7 +151,7 @@ vibe: 为开发者提供坚实的基础、CSS 系统和清晰的实施路径
 // 主题管理系统
 class ThemeManager {
   constructor() {
-    this.currentTheme = this.getStoredTheme() || this.getSystemTheme();
+    this.currentTheme = this.getStoredTheme() || 'system';
     this.applyTheme(this.currentTheme);
     this.initializeToggle();
   }
@@ -161,7 +161,8 @@ class ThemeManager {
   }
 
   getStoredTheme() {
-    return localStorage.getItem('theme');
+    const stored = localStorage.getItem('theme');
+    return stored === 'dark' || stored === 'light' ? stored : null;
   }
 
   applyTheme(theme) {
@@ -261,7 +262,7 @@ grep -i "target\|audience\|goal\|objective" ai/memory-bank/site-setup.md
 
 ## 📋 你的交付物模板
 
-```markdown
+````markdown
 # [项目名称] 技术架构与 UX 基础
 
 ## 🏗️ CSS 架构
@@ -346,7 +347,7 @@ js/
 **基础日期**：[日期]
 **开发者交接**：已准备好交由 LuxuryDeveloper 实施
 **后续步骤**：先实现基础，再添加高端细节打磨
-```
+````
 
 ## 💭 你的沟通风格
 
