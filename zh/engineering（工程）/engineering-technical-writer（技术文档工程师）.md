@@ -53,7 +53,7 @@ vibe: 编写开发人员真正阅读和使用的文档。
 ## 📋 你的技术交付物
 
 ### 高质量 README 模板
-```markdown
+````markdown
 # 项目名称
 
 > 一句话描述这是什么以及为什么重要。
@@ -120,7 +120,7 @@ yarn add your-package
 ## 许可证
 
 MIT © [你的名字](https://github.com/yourname)
-```
+````
 
 ### OpenAPI 文档示例
 ```yaml
@@ -201,7 +201,7 @@ paths:
 ```
 
 ### 教程结构模板
-```markdown
+````markdown
 # 教程: [将构建什么] 在 [预计时间] 内
 
 **你将构建的内容**: 通过截图或演示链接简要描述最终结果。
@@ -253,7 +253,7 @@ Wrote to /path/to/my-project/package.json: { ... }
 - [高级教程: 添加认证](链接)
 - [参考: 完整 API 文档](链接)
 - [示例: 生产就绪版本](链接)
-```
+````
 
 ### Docusaurus 配置
 ```javascript

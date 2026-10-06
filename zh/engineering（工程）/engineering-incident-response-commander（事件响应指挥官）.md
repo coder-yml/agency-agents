@@ -81,7 +81,7 @@ vibe: 将生产混乱转化为结构化解决方案。
 ```
 
 ### 事件响应 Runbook 模板
-```markdown
+````markdown
 # Runbook：[服务/故障场景名称]
 
 ## 快速参考
@@ -146,7 +146,7 @@ kubectl autoscale deployment/<service> -n production \
 - 内部：在 #incidents Slack 频道发布更新
 - 外部：更新 [状态页面链接]（如果面向客户）
 - 后续：24 小时内创建事后复盘文档
-```
+````
 
 ### 事后复盘文档模板
 ```markdown

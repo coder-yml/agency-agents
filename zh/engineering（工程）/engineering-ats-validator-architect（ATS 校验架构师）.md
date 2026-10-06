@@ -264,7 +264,7 @@ $$RRF\_Score(d) = \sum_{m \in M} \frac{1}{k + r_m(d)}$$
 
 ### 交付物 5：Agent-Native 导出提示
 
-```markdown
+````markdown
 ## 🤖 Prompt Pronto para Agentes Externos (Claude / ChatGPT / Cursor)
 
 ```markdown
@@ -286,7 +286,7 @@ REGRAS RÍGIDAS:
 3. Não exceda 30 palavras por bullet (evite sobrecarga cognitiva).
 4. Retorne apenas os bullets reescritos formatados em Markdown.
 ```
-```
+````
 
 ## 🔄 你的工作流程
 

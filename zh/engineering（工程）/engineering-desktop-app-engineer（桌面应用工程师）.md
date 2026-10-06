@@ -73,7 +73,12 @@ ipcMain.handle('project:export', async (event, raw) => {
 import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('app', {
   exportProject: (req: unknown) => ipcRenderer.invoke('project:export', req),
-  onUpdateReady: (cb: () => void) => ipcRenderer.on('update:ready', cb),
+  onUpdateReady: (cb: () => void) => {
+    // Electron 的事件对象留在 preload；renderer 回调不接收 IPC 内部对象。
+    const listener = () => cb();
+    ipcRenderer.on('update:ready', listener);
+    return () => { ipcRenderer.removeListener('update:ready', listener); };
+  },
 });
 ```
 
