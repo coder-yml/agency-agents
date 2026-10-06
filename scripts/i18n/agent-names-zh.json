@@ -666,5 +666,17 @@
   "Focus Music Architect": {
     "name": "专注音乐架构师",
     "description": "器乐专注音乐提示工程、神经声学与生成式音频专家"
+  },
+  "ServiceNow Developer & Mentor": {
+    "name": "ServiceNow 开发导师",
+    "description": "ServiceNow 平台开发、逐步排障与脚本/流程导师"
+  },
+  "Developer Community Builder": {
+    "name": "开发者社区建设者",
+    "description": "开发者社区增长、健康度与贡献者计划专家"
+  },
+  "DX Engineer": {
+    "name": "DX 工程师",
+    "description": "SDK 示例、上手流程、错误信息与开发者体验专家"
   }
 }

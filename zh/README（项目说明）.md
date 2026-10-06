@@ -102,6 +102,15 @@ cp engineering/*.md ~/.claude/agents/
 ./scripts/install.sh --tool opencode --division engineering --dry-run
 ```
 
+`--agent` 和 `--agents-file` 接受 agent 的 slug（即 `--list agents` 打印出来的那个）、显示名称，或不带 `.md` 的文件名——这也是 [runbook 花名册](../strategy/runbooks.json) 使用的 id——因此可以按 runbook 列出的团队原样安装：
+
+```bash
+python3 -c 'import json, sys
+for r in json.load(open("strategy/runbooks.json"))["runbooks"]:
+    if r["slug"] == sys.argv[1]: [print(a) for g in r["roster"] for a in g["agents"]]' startup-mvp > team.txt
+./scripts/install.sh --tool claude-code --agents-file team.txt
+```
+
 > **OpenCode 说明：** OpenCode 的运行时当前只会注册大约 119 个 agent，并会静默丢弃其余部分（[上游 bug](https://github.com/anomalyco/opencode/issues/27988)）。使用 `--division` 安装子集可以让你保持在该限制之内。若你选择的内容会超过上限，安装器会发出警告。
 
 有关完整细节，请参见下方的 [多工具集成](#-多工具集成) 部分。
@@ -180,6 +189,7 @@ cp engineering/*.md ~/.claude/agents/
 | 📑 [PDF Engine Architect](engineering（工程）/engineering-pdf-engine-architect（PDF%20引擎架构师）.md) | 确定性 HTML 转 PDF 编译、标记 PDF/UA 与 PDF/A | Playwright 渲染池、动态页面尺寸、档案级文档输出 |
 | 🎯 [ATS Validator Architect](engineering（工程）/engineering-ats-validator-architect（ATS%20校验架构师）.md) | 简历可解析性、ATS 摄入流水线 | BM25/TF-IDF 相关性评分、版面线性化审计、EU AI Act 与 NYC LL144 合规 |
 | 📑 [Universal Document Compiler](engineering（工程）/engineering-universal-document-compiler（通用文档编译器）.md) | 无 schema 文档 AST、数据形状版面推断、分页发布 | 把任意 YAML 树编译成提案、技术规格和高管档案 |
+| 🛠️ [ServiceNow Developer & Mentor](engineering（工程）/engineering-servicenow-developer-mentor（ServiceNow%20开发导师）.md) | Business Rules、Script Includes、GlideAjax、ACL、Flow Designer | ServiceNow 开发，以及逐步排查实例问题 |
 
 ### 🎨 设计分部
 
@@ -242,6 +252,7 @@ cp engineering/*.md ~/.claude/agents/
 | 📱 [TikTok Strategist](marketing（营销）/marketing-tiktok-strategist（TikTok%20策略专家）.md) | 病毒式内容、算法优化 | TikTok 增长、病毒内容、Gen Z/Millennial 受众 |
 | 📸 [Instagram Curator](marketing（营销）/marketing-instagram-curator（Instagram%20运营专家）.md) | 视觉叙事、社区建设 | Instagram 策略、美学开发、视觉内容 |
 | 🤝 [Reddit Community Builder](marketing（营销）/marketing-reddit-community-builder（Reddit%20社区运营）.md) | 真实互动、价值驱动内容 | Reddit 策略、社区信任、真实营销 |
+| 🌱 [Developer Community Builder](marketing（营销）/marketing-developer-community-builder（开发者社区建设者）.md) | Discord/论坛架构、贡献者计划、社区健康 | 建设成员真正觉得有价值的开发者社区 |
 | 📱 [App Store Optimizer](marketing（营销）/marketing-app-store-optimizer（应用商店优化专家）.md) | ASO、转化优化、可发现性 | 应用营销、商店优化、应用增长 |
 | 🌐 [Social Media Strategist](marketing（营销）/marketing-social-media-strategist（社交媒体策略师）.md) | 跨平台策略、活动 | 整体社交策略、多平台活动 |
 | 📕 [Xiaohongshu Specialist](marketing（营销）/marketing-xiaohongshu-specialist（小红书运营专家）.md) | 生活方式内容、趋势驱动策略 | 小红书增长、美学叙事、Gen Z 受众 |
@@ -281,6 +292,7 @@ cp engineering/*.md ~/.claude/agents/
 | 🎯 [Sprint Prioritizer](product（产品）/product-sprint-prioritizer（冲刺优先级排序师）.md) | 敏捷规划、功能优先级排序 | Sprint 规划、资源分配、待办项管理 |
 | 🔍 [Trend Researcher](product（产品）/product-trend-researcher（趋势研究员）.md) | 市场情报、竞争分析 | 市场研究、机会评估、趋势识别 |
 | 💬 [Feedback Synthesizer](product（产品）/product-feedback-synthesizer（反馈合成师）.md) | 用户反馈分析、洞察提取 | 反馈分析、用户洞察、产品优先级 |
+| 🔬 [DX Engineer](product（产品）/product-dx-engineer（DX%20工程师）.md) | 上手摩擦、SDK 人体工学、错误信息 | 缩短开发者到达第一次成功的时间 |
 | 🧠 [Behavioral Nudge Engine](product（产品）/product-behavioral-nudge-engine（行为助推引擎）.md) | 行为心理学、推动设计、参与度 | 通过行为科学最大化用户动机 |
 | 🧭 [Product Manager](product（产品）/product-manager（产品经理）.md) | 全生命周期产品负责人 | 发现、PRD、路线图规划、GTM、结果衡量 |
 
@@ -928,7 +940,7 @@ Use the @security-engineer rules to review this code.
 <details>
 <summary><strong>Aider</strong></summary>
 
-`CONVENTIONS.md` 是花名册索引——每个 agent 的名称、描述，以及完整指令的路径。Aider 会在整个会话中把约定文件保持在上下文里，而 279 份正文合计大约一百万 tokens，因此该文件只列出 agents，而不是把正文内联进去。
+`CONVENTIONS.md` 是花名册索引——每个 agent 的名称、描述，以及完整指令的路径。Aider 会在整个会话中把约定文件保持在上下文里，而全部 agent 正文合计大约一百万 tokens，因此该文件只列出 agents，而不是把正文内联进去。
 
 ```bash
 cd /your/project
