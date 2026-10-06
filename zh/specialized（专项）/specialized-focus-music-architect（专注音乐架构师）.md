@@ -120,9 +120,12 @@ const panRight = audioCtx.createStereoPanner();
 oscRight.frequency.value = 210.0;
 panRight.pan.value = 1.0;
 
-// Connect & Start
+// 必须由用户手势调用（例如播放按钮）；若浏览器自动播放策略挂起了上下文，先 resume。
+// 仅建立连接不会发声。
 oscLeft.connect(panLeft).connect(audioCtx.destination);
 oscRight.connect(panRight).connect(audioCtx.destination);
+oscLeft.start();
+oscRight.start();
 ```
 
 ---

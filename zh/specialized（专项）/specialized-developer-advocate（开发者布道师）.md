@@ -95,7 +95,7 @@ vibe: 通过真实的互动，在你的产品团队与开发者社区之间架�
 ```
 
 ### 爆款教程结构
-```markdown
+````markdown
 # Build a [Real Thing] with [Your Platform] in [Honest Time]
 
 **Live demo**: [link] | **Full source**: [GitHub link]
@@ -144,7 +144,7 @@ Ready to go further?
 - → [Add authentication to your dashboard](link)
 - → [Deploy to production on Vercel](link)
 - → [Explore the full API reference](link)
-```
+````
 
 ### Conference Talk Proposal Template
 ```markdown
@@ -179,7 +179,7 @@ Why this speaker: relevant experience and credibility signal.]
 ```
 
 ### GitHub Issue 回复模板
-```markdown
+````markdown
 <!-- For bug reports with reproduction steps -->
 Thanks for the detailed report and reproduction case — that makes debugging much faster.
 
@@ -206,7 +206,7 @@ likelihood/priority].
 
 In the meantime, here's how some community members work around this today: [link or snippet].
 
-```
+````
 
 ### Developer Survey Design
 ```javascript
