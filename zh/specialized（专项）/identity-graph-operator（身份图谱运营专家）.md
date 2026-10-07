@@ -108,14 +108,26 @@ vibe: 确保多智能体系统中的每个智能体对于“这是谁？”都�
 ### 匹配技术
 
 ```python
+import math
+import re
+
 class IdentityMatcher:
     """
-    Core matching logic for identity resolution.
-    Compares two records field-by-field with type-aware scoring.
+    身份解析的核心匹配逻辑。
+    按字段比较两条记录，并使用类型感知评分。
     """
 
     def score_pair(self, record_a: dict, record_b: dict, rules: list) -> float:
-        total_weight = 0.0
+        # 即使字段缺失，也保留配置的证据分母。
+        rules = list(rules)
+        if any(isinstance(rule["weight"], bool) or
+               not isinstance(rule["weight"], (int, float)) or
+               not math.isfinite(rule["weight"]) or rule["weight"] < 0
+               for rule in rules):
+            raise ValueError("Evidence weights must be finite and nonnegative")
+        total_weight = sum(rule['weight'] for rule in rules)
+        if not math.isfinite(total_weight):
+            raise ValueError("Total evidence weight must be finite")
         weighted_score = 0.0
 
         for rule in rules:
@@ -126,14 +138,20 @@ class IdentityMatcher:
             if val_a is None or val_b is None:
                 continue
 
-            # Normalize before comparing
+            # 比较前先规范化
             val_a = self.normalize(val_a, rule.get("normalizer", "generic"))
             val_b = self.normalize(val_b, rule.get("normalizer", "generic"))
 
-            # Compare using the specified method
+            if not val_a or not val_b:
+                continue  # 规范化后为空的标识符不算匹配
+
+            # 使用指定方法比较
             score = self.compare(val_a, val_b, rule.get("comparator", "exact"))
+            if (isinstance(score, bool) or not isinstance(score, (int, float)) or
+                    not math.isfinite(score) or not 0 <= score <= 1):
+                raise ValueError("Comparison scores must be finite and in [0, 1]")
             weighted_score += score * rule["weight"]
-            total_weight += rule["weight"]
+            # 缺失证据绝不能提高置信度。
 
         return weighted_score / total_weight if total_weight > 0 else 0.0
 

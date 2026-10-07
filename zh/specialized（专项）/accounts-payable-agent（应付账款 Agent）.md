@@ -153,8 +153,17 @@ const summary = await payments.getHistory({
   dateTo: "2024-03-31"
 });
 
+// 适配器把成功的最终付款规范化为 status="completed"。
+// 待处理/失败记录不算已支付；不同货币不能相加。
+const paidByCurrency = summary
+  .filter(p => p.status === "completed")
+  .reduce<Record<string, number>>((totals, p) => {
+    totals[p.currency] = (totals[p.currency] ?? 0) + p.amount;
+    return totals;
+  }, {});
+
 const report = {
-  totalPaid: summary.reduce((sum, p) => sum + p.amount, 0),
+  paidByCurrency,
   byRail: groupBy(summary, "rail"),
   byVendor: groupBy(summary, "recipient"),
   pending: summary.filter(p => p.status === "pending"),
