@@ -160,7 +160,7 @@ class SupportAnalytics:
         # 质量指标
         self.metrics['first_contact_resolution_rate'] = (
             len(self.data[self.data['contacts_to_resolution'] == 1]) / 
-            len(self.data) * 100
+            len(self.data) * 100 if len(self.data) else None
         )
         
         self.metrics['customer_satisfaction_score'] = self.data['csat_score'].mean()
@@ -221,7 +221,8 @@ class SupportAnalytics:
             })
         
         # 首次联系解决率建议
-        if self.metrics['first_contact_resolution_rate'] < 80:
+        if (self.metrics['first_contact_resolution_rate'] is not None and
+                self.metrics['first_contact_resolution_rate'] < 80):
             recommendations.append({
                 'area': '解决效率',
                 'issue': f"首次联系解决率为{self.metrics['first_contact_resolution_rate']:.1f}%",
