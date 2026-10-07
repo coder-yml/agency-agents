@@ -60,7 +60,16 @@ static void sensor_task(void *arg) {
 
 void app_main(void) {
     sensor_queue = xQueueCreate(8, sizeof(sensor_data_t));
-    xTaskCreate(sensor_task, "sensor", TASK_STACK_SIZE, NULL, TASK_PRIORITY, NULL);
+    if (sensor_queue == NULL) {
+        // 绝不要启动一个会向无效队列发送数据的任务。
+        return; // 通过应用的故障路径报告分配失败。
+    }
+    if (xTaskCreate(sensor_task, "sensor", TASK_STACK_SIZE, NULL,
+                    TASK_PRIORITY, NULL) != pdPASS) {
+        vQueueDelete(sensor_queue);
+        sensor_queue = NULL;
+        return; // 没有任务拥有该队列；报告故障前先释放它。
+    }
 }
 ```
 

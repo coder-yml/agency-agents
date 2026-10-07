@@ -128,6 +128,28 @@ def reconstruct_thread(messages):
     - 引用回复重复内容（20 条消息的线索 = ~4-5x token 膨胀）
     - 当人们回复链中的不同消息时，线索分叉
     """
+    # 在构建或修改图之前拒绝歧义身份。
+    # 缺失或重复的 Message-ID 必须进入隔离/解析路径；
+    # 静默使用 None（或复用的 ID）会覆盖无关消息。
+    messages = list(messages)  # 保留对一次性消息可迭代对象的支持
+    message_ids = [msg.get("message_id") for msg in messages]
+    if any(not isinstance(mid, str) or not mid.strip() for mid in message_ids):
+        raise ValueError("Every message needs a nonempty Message-ID")
+    if len(set(message_ids)) != len(message_ids):
+        raise ValueError("Duplicate Message-ID: resolve identity before reconstruction")
+
+    parents = {msg["message_id"]: msg["in_reply_to"] for msg in messages}
+    checked = set()
+    for start in parents:
+        path = set()
+        current = start
+        while current in parents and current not in checked:
+            if current in path:
+                raise ValueError("Cyclic In-Reply-To headers: quarantine before reconstruction")
+            path.add(current)
+            current = parents[current]
+        checked.update(path)
+
     # 从 In-Reply-To 和 References 头构建回复图
     graph = {}
     for msg in messages:

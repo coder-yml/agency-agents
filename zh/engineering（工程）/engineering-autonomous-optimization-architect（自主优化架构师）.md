@@ -39,39 +39,48 @@ vibe: 让系统更快而不会让你破产的系统管理者。
 export async function optimizeAndRoute(
   serviceTask: string,
   providers: Provider[],
-  securityLimits: { maxRetries: 3, maxCostPerRun: 0.05 }
+  securityLimits: { maxRetries: number, maxCostPerRun: number }
 ) {
-  // 按历史「优化分数」（速度 + 成本 + 准确率）对提供商排序
+  if (!Number.isInteger(securityLimits.maxRetries) || securityLimits.maxRetries < 0 ||
+      !Number.isFinite(securityLimits.maxCostPerRun) || securityLimits.maxCostPerRun <= 0) {
+    throw new Error('Require a nonnegative retry count and a positive finite budget');
+  }
   const rankedProviders = rankByHistoricalPerformance(providers);
+  let attempts = 0;
+  let spentCost = 0;
 
   for (const provider of rankedProviders) {
     if (provider.circuitBreakerTripped) continue;
-
+    if (attempts >= securityLimits.maxRetries + 1) break;
+    attempts += 1;
+    let result;
     try {
-      const result = await provider.executeWithTimeout(5000);
-      const cost = calculateCost(provider, result.tokens);
-      
-      if (cost > securityLimits.maxCostPerRun) {
-         triggerAlert('WARNING', `Provider over cost limit. Rerouting.`);
-         continue; 
-      }
-      
-      // 后台自学习：异步测试输出与更便宜的模型对比
-      // 看看是否可以在以后进行优化。
-      shadowTestAgainstAlternative(serviceTask, result, getCheapestProvider(providers));
-      
-      return result;
-
+      result = await provider.executeWithTimeout(5000);
     } catch (error) {
-       logFailure(provider);
-       if (provider.failures > securityLimits.maxRetries) {
-           tripCircuitBreaker(provider);
-       }
+      logFailure(provider);
+      if (provider.failures > securityLimits.maxRetries) tripCircuitBreaker(provider);
+      continue;
     }
+
+    // 费用已经产生。停止路由；不要再花钱来掩盖超支。
+    const cost = calculateCost(provider, result.tokens);
+    if (!Number.isFinite(cost) || cost < 0) {
+      throw new Error('Provider cost is unknown or invalid; stop routing');
+    }
+    spentCost += cost;
+    if (spentCost > securityLimits.maxCostPerRun) {
+      triggerAlert('WARNING', 'Run budget exceeded; stopping provider attempts.');
+      throw new Error('Run budget exceeded');
+    }
+    // 影子评估需要单独预留的预算；此路由循环
+    // 在返回生产结果后不再启动额外的付费工作。
+    return result;
   }
-  throw new Error('All fail-safes tripped. Aborting task to prevent runaway costs.');
+  throw new Error('No provider succeeded within the retry budget.');
 }
 ```
+
+这是扣费后的停止，并不能证明存在预付的硬成本上限。在调用付费提供商之前，先为每次尝试预留保守的 token/成本上限；把失败或超时产生的费用计入提供商账本，并在下一次尝试前核对未知费用。可选的影子评估需要单独、明确的预算和队列。仅靠五秒超时并不能取消远端计费。
 
 ## 🔄 你的工作流程
 1. **阶段 1：基线与边界：** 确定当前生产模型。请开发者建立硬限制：「每次执行你愿意花费的最大 $ 是多少？」

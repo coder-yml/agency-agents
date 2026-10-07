@@ -108,16 +108,28 @@ new Intl.ListFormat(locale, { type: 'conjunction' }).format(['Ana', 'Luis', 'Mei
 ### 将伪本地化接入 CI：在译者之前先捕捉问题
 
 ```javascript
-// 伪区域设置转换："Save changes" → "[!!! Šàvé çhàñĝéš one two !!!]"
-// - 带重音字符可暴露编码问题
-// - +40% 的填充可暴露截断和固定宽度布局
-// - 方括号可暴露拼接（片段会渲染成独立的方括号块）
-// - 屏幕上出现未转换文本 = 硬编码字符串，检查失败
+// 只转换字面量 AST 节点，不要转换 ICU 参数、选择器或骨架。
+import { parse, TYPE } from '@formatjs/icu-messageformat-parser';
+import { printAST } from '@formatjs/icu-messageformat-parser/printer.js';
+
 export function pseudoLocalize(message) {
   const map = { a: 'à', e: 'é', i: 'î', o: 'ö', u: 'ü', c: 'ç', n: 'ñ', s: 'š', g: 'ĝ' };
-  const swapped = message.replace(/[aeioucnsg]/g, (ch) => map[ch] ?? ch);
-  const padding = ' one two three'.slice(0, Math.ceil(message.length * 0.4));
-  return `[!!! ${swapped}${padding} !!!]`;
+  function transform(elements) {
+    for (const element of elements) {
+      if (element.type === TYPE.literal) {
+        const swapped = element.value.replace(/[aeioucnsg]/g, (ch) => map[ch] ?? ch);
+        const extra = Math.ceil(element.value.length * 0.4);
+        element.value = swapped + ' ~'.repeat(Math.ceil(extra / 2)).slice(0, extra);
+      } else if (element.type === TYPE.select || element.type === TYPE.plural) {
+        for (const option of Object.values(element.options)) transform(option.value);
+      } else if (element.type === TYPE.tag) {
+        transform(element.children);
+      }
+    }
+  }
+  const ast = parse(message);
+  transform(ast);
+  return `[!!! ${printAST(ast)} !!!]`;
 }
 ```
 

@@ -348,6 +348,7 @@ def assign_speakers(transcript_segments: list[TranscriptSegment],
 ```python
 import json
 import re
+import math
 
 def normalize_transcript(segments: list[TranscriptSegment]) -> list[TranscriptSegment]:
     """
@@ -374,20 +375,28 @@ def export_srt(segments: list[TranscriptSegment], output_path: str) -> str:
     """
     将转录导出为 SRT 字幕文件。
 
-    根据广播标准验证阅读速度（最多 20 字符/秒）。
-    分割长片段以符合行长度限制。
+    以毫秒精度序列化已校验的字幕时间。
+    阅读速度和行长度检查属于应用适配器；
+    此序列化示例保留所提供的文本，不做分割。
     """
     def format_timestamp(seconds: float) -> str:
-        h = int(seconds // 3600)
-        m = int((seconds % 3600) // 60)
-        s = int(seconds % 60)
-        ms = int((seconds % 1) * 1000)
+        if not math.isfinite(seconds) or seconds < 0:
+            raise ValueError("Subtitle timestamps must be finite and nonnegative")
+        milliseconds = round(seconds * 1000)
+        h, milliseconds = divmod(milliseconds, 3_600_000)
+        m, milliseconds = divmod(milliseconds, 60_000)
+        s, ms = divmod(milliseconds, 1000)
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
     lines = []
     for i, seg in enumerate(segments, 1):
+        if seg.end <= seg.start:
+            raise ValueError("Subtitle cues need a positive duration")
+        start, end = format_timestamp(seg.start), format_timestamp(seg.end)
+        if start == end:
+            raise ValueError("Subtitle cue collapses at millisecond precision")
         lines.append(str(i))
-        lines.append(f"{format_timestamp(seg.start)} --> {format_timestamp(seg.end)}")
+        lines.append(f"{start} --> {end}")
         speaker_prefix = f"[{seg.speaker}] " if seg.speaker else ""
         lines.append(f"{speaker_prefix}{seg.text}")
         lines.append("")
