@@ -131,6 +131,11 @@ export function handleSummary(data) {
 }
 
 function generateHTMLReport(data) {
+  const number = (metric, key, scale = 1) => {
+    const value = data.metrics[metric]?.values?.[key];
+    return typeof value === 'number' && Number.isFinite(value)
+      ? (value * scale).toFixed(2) : 'N/A（无测量值）';
+  };
   return `
     <!DOCTYPE html>
     <html>
@@ -139,10 +144,10 @@ function generateHTMLReport(data) {
       <h1>性能测试结果</h1>
       <h2>关键指标</h2>
       <ul>
-        <li>平均响应时间：${data.metrics.http_req_duration.values.avg.toFixed(2)}ms</li>
-        <li>95百分位：${data.metrics.http_req_duration.values['p(95)'].toFixed(2)}ms</li>
-        <li>错误率：${(data.metrics.http_req_failed.values.rate * 100).toFixed(2)}%</li>
-        <li>总请求数：${data.metrics.http_reqs.values.count}</li>
+        <li>平均响应时间：${number('http_req_duration', 'avg')}ms</li>
+        <li>95百分位：${number('http_req_duration', 'p(95)')}ms</li>
+        <li>错误率：${number('http_req_failed', 'rate', 100)}%</li>
+        <li>总请求数：${number('http_reqs', 'count')}</li>
       </ul>
     </body>
     </html>

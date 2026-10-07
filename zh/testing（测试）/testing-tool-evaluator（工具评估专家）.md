@@ -155,6 +155,47 @@ class ToolEvaluator:
             weighted_score=weighted_score,
             notes=notes
         )
+
+    def _test_functionality(self, tool_config: Dict) -> tuple[float, str]:
+        """按需求测试核心功能"""
+        required_features = tool_config.get("required_features", [])
+        optional_features = tool_config.get("optional_features", [])
+
+        # 测试每个必需功能
+        feature_scores = []
+        test_notes = []
+
+        for feature in required_features:
+            score = self._test_feature(feature, tool_config)
+            feature_scores.append(score)
+            test_notes.append(f"{feature}: {score}/10")
+
+        # 必需功能占 80% 权重
+        required_avg = np.mean(feature_scores) if feature_scores else 0
+
+        # 测试可选功能
+        optional_scores = []
+        for feature in optional_features:
+            score = self._test_feature(feature, tool_config)
+            optional_scores.append(score)
+            test_notes.append(f"{feature} (optional): {score}/10")
+
+        optional_avg = np.mean(optional_scores) if optional_scores else 0
+
+        # 缺失的类别不是失败的类别：只对实际参与评分的权重做归一化。
+        active_scores = []
+        if feature_scores:
+            active_scores.append((required_avg, 0.8))
+        if optional_scores:
+            active_scores.append((optional_avg, 0.2))
+        if not active_scores:
+            raise ValueError("Define at least one feature before scoring functionality")
+        final_score = sum(score * weight for score, weight in active_scores) / sum(
+            weight for _, weight in active_scores
+        )
+        notes = "; ".join(test_notes)
+
+        return final_score, notes
     
     def _test_performance(self, tool_config: Dict) -> tuple[float, str]:
         """性能测试及量化指标"""
