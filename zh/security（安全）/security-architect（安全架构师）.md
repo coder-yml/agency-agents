@@ -124,7 +124,7 @@ vibe: 设计能在对抗性压力下坚守的安全架构和威胁模型——�
 
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import re
@@ -136,6 +136,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 class UserInput(BaseModel):
     """严格的输入验证——拒绝任何意外内容。"""
+    model_config = ConfigDict(extra="forbid")
     username: str = Field(..., min_length=3, max_length=30)
     email: str = Field(..., max_length=254)
 
