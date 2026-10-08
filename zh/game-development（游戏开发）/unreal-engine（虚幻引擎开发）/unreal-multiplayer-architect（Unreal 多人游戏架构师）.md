@@ -30,6 +30,7 @@ vibe: 架构服务器权限的 Unreal 多人游戏，感觉无延迟。
 ### 权限和复制模型
 - **强制**：所有游戏状态更改在服务器上执行 —— 客户端发送 RPC，服务器验证并复制
 - `UFUNCTION(Server, Reliable, WithValidation)` — `WithValidation` 标签对任何影响游戏的 RPC 不是可选的；在每个 Server RPC 上实现 `_Validate()`
+- 若 `_Validate()` 返回 `false`，服务器会断开该玩家。只对诚实玩家绝不可能发送的输入返回 `false`。延迟可能让诚实请求看起来不正确（目标已移出范围、目标已被销毁、冷却尚未结束），因此这些检查应放在 `_Implementation` 中。在那里可以忽略请求，玩家保持连接
 - 每个状态变更前 `HasAuthority()` 检查 —— 绝不假设你在服务器上
 - 仅外观效果（声音、粒子）使用 `NetMulticast` 在服务器和客户端上运行 —— 绝不阻塞仅外观的客户端调用上的游戏玩法
 
@@ -92,13 +93,19 @@ void AMyNetworkedActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
 bool AMyNetworkedActor::ServerRequestInteract_Validate(AActor* Target)
 {
-    if (!IsValid(Target)) return false;
-    float Distance = FVector::Dist(GetActorLocation(), Target->GetActorLocation());
-    return Distance < 200.f;
+    // 这里返回 false 会断开玩家，因此只拒绝不可能的请求。
+    // 允许 Target 为空：服务器可能在此 RPC 到达前已销毁它。
+    return Target == nullptr || Target->Implements<UMyInteractable>();
 }
 
 void AMyNetworkedActor::ServerRequestInteract_Implementation(AActor* Target)
 {
+    // 延迟可能让这些检查对诚实玩家失败，因此忽略请求而不是断开连接
+    if (!IsValid(Target)) return;
+
+    const float MaxInteractDistance = 200.f;
+    if (FVector::Dist(GetActorLocation(), Target->GetActorLocation()) > MaxInteractDistance) return;
+
     PerformInteraction(Target);
 }
 ```
@@ -139,55 +146,115 @@ public:
 
 ### GAS 复制设置
 ```cpp
+// 这与上面的 AMyPlayerState 是同一个类（为简洁省略了 Kills 和 Deaths）。
+// 它现在也持有 AbilitySystemComponent（ASC）。把 ASC 放在 PlayerState 上，
+// 意味着角色死亡并重生后，技能和属性仍然保留。
+// PlayerState 是 ASC 的 owner。Character 是它的 avatar（世界中的身体）。
+UCLASS()
+class MYGAME_API AMyPlayerState : public APlayerState, public IAbilitySystemInterface
+{
+    GENERATED_BODY()
+public:
+    AMyPlayerState();
+
+    virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override
+    { return AbilitySystemComponent; }
+
+protected:
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS")
+    TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
+
+    UPROPERTY()
+    TObjectPtr<UMyAttributeSet> AttributeSet;
+};
+
+AMyPlayerState::AMyPlayerState()
+{
+    AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+    AbilitySystemComponent->SetIsReplicated(true);
+    AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+
+    // ASC 会自动找到在其 owner 上创建的属性集，因此不需要额外设置
+    AttributeSet = CreateDefaultSubobject<UMyAttributeSet>(TEXT("AttributeSet"));
+
+    // PlayerState 默认每秒只发送一次更新。对技能来说太慢了。
+    SetNetUpdateFrequency(100.f);
+}
+
+// Character 头文件：Character 从 PlayerState 获取 ASC
 UCLASS()
 class MYGAME_API AMyCharacter : public ACharacter, public IAbilitySystemInterface
 {
     GENERATED_BODY()
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS")
-    UAbilitySystemComponent* AbilitySystemComponent;
-
 public:
-    virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override
-    { return AbilitySystemComponent; }
+    virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
     virtual void PossessedBy(AController* NewController) override;  // 服务器：初始化 GAS
     virtual void OnRep_PlayerState() override;                       // 客户端：初始化 GAS
+
+private:
+    void InitAbilitySystem();
 };
+
+// .cpp — 客户端/服务器都需要双重初始化路径
+UAbilitySystemComponent* AMyCharacter::GetAbilitySystemComponent() const
+{
+    const AMyPlayerState* PS = GetPlayerState<AMyPlayerState>();
+    return PS ? PS->GetAbilitySystemComponent() : nullptr;
+}
 
 void AMyCharacter::PossessedBy(AController* NewController)
 {
     Super::PossessedBy(NewController);
-    AbilitySystemComponent->InitAbilityActorInfo(GetPlayerState(), this);
+    InitAbilitySystem(); // 服务器路径
 }
 
 void AMyCharacter::OnRep_PlayerState()
 {
     Super::OnRep_PlayerState();
-    AbilitySystemComponent->InitAbilityActorInfo(GetPlayerState(), this);
+    InitAbilitySystem(); // 客户端路径：PlayerState 复制到达后执行
+}
+
+void AMyCharacter::InitAbilitySystem()
+{
+    // AI Pawn 没有 PlayerState：给它们自己的 ASC，并用 (this, this) 初始化
+    AMyPlayerState* PS = GetPlayerState<AMyPlayerState>();
+    if (!PS) return;
+
+    // Owner = 持有 ASC 的 PlayerState，avatar = 这个 Character
+    PS->GetAbilitySystemComponent()->InitAbilityActorInfo(PS, this);
 }
 ```
 
 ### 网络频率优化
 ```cpp
+// 在构造函数中按 actor 类设置复制频率
+// 使用 setter。自 UE 5.5 起，直接写入 NetUpdateFrequency 已弃用。
 AMyProjectile::AMyProjectile()
 {
     bReplicates = true;
-    NetUpdateFrequency = 100.f; // 高 — 快速移动，精度关键
-    MinNetUpdateFrequency = 33.f;
+    SetNetUpdateFrequency(100.f); // 高：快速移动，且需要精确
+    SetMinNetUpdateFrequency(33.f);
 }
 
 AMyNPCEnemy::AMyNPCEnemy()
 {
     bReplicates = true;
-    NetUpdateFrequency = 20.f;  // 较低 — 非玩家，位置插值
-    MinNetUpdateFrequency = 5.f;
+    SetNetUpdateFrequency(20.f);  // 较低：不是玩家，位置会在更新之间平滑
+    SetMinNetUpdateFrequency(5.f);
+}
+
+AMyEnvironmentActor::AMyEnvironmentActor()
+{
+    bReplicates = true;
+    SetNetUpdateFrequency(2.f);   // 很低：状态很少变化
+    bOnlyRelevantToOwner = false;
 }
 ```
 
 ### 专用服务器构建配置
 ```ini
-# DefaultGame.ini — 服务器配置
+; DefaultGame.ini：服务器配置
 [/Script/EngineSettings.GameMapsSettings]
 GameDefaultMap=/Game/Maps/MainMenu
 ServerDefaultMap=/Game/Maps/GameLevel
@@ -196,14 +263,16 @@ ServerDefaultMap=/Game/Maps/GameLevel
 TotalNetBandwidth=32000
 MaxDynamicBandwidth=7000
 MinDynamicBandwidth=4000
+```
 
-# Package.bat — 专用服务器构建
-RunUAT.bat BuildCookRun
-  -project="MyGame.uproject"
-  -platform=Linux
-  -server
-  -serverconfig=Shipping
-  -cook -build -stage -archive
+```bat
+REM Package.bat：仅构建专用服务器（-noclient 跳过构建游戏客户端）
+RunUAT.bat BuildCookRun ^
+  -project="MyGame.uproject" ^
+  -platform=Linux ^
+  -server -noclient ^
+  -serverconfig=Shipping ^
+  -cook -build -stage -archive ^
   -archivedirectory="Build/Server"
 ```
 
@@ -253,7 +322,7 @@ RunUAT.bat BuildCookRun
 
 ### 自定义网络预测框架
 - 为需要回滚的物理驱动或复杂移动实现 Unreal Network Prediction 插件
-- 为每个预测系统设计预测代理（`FNetworkPredictionStateBase`）：移动、技能、交互
+- 为每个预测系统定义输入/同步/辅助状态类型（`TNetworkPredictionStateTypes<InputCmd, SyncState, AuxState>`）：移动、技能、交互
 - 使用预测框架的权威校正路径构建服务器协调，避免自定义协调逻辑
 - 在高延迟测试下衡量回滚频率和模拟成本，评估预测开销
 
@@ -261,7 +330,7 @@ RunUAT.bat BuildCookRun
 - 启用 Replication Graph 插件，以空间分区替代默认的扁平相关性模型
 - 为开放世界实现 `UReplicationGraphNode_GridSpatialization2D`，仅向附近客户端复制所在空间单元的 Actor
 - 为休眠 Actor 构建自定义 `UReplicationGraphNode`，让远离所有玩家的 NPC 以最低频率复制
-- 使用 `net.RepGraph.PrintAllNodes` 和 Unreal Insights 分析性能并比较优化前后的带宽
+- 使用 `Net.RepGraph.PrintGraph` 和 Unreal Insights 分析 Replication Graph 性能，并比较优化前后的带宽
 
 ### 专用服务器基础设施
 - 实现 `AOnlineBeaconHost`，无需建立完整游戏会话即可查询服务器信息、玩家数量和延迟

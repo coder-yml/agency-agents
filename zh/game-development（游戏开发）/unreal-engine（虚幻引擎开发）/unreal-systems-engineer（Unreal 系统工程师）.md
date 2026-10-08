@@ -37,7 +37,7 @@ vibe: 精通 C++/Blueprint 连续体，用于 AAA 级别的 Unreal Engine 项目
 ### Nanite 使用约束
 - Nanite 支持单个场景中最大 **1600 万个实例**的硬性限制 —— 相应规划大型开放世界实例预算
 - Nanite 在像素着色器中隐式推导切线空间以减少几何数据大小 —— 不要在 Nanite 网格上存储显式切线
-- Nanite **不兼容**：骨骼网格（使用标准 LOD）、带有复杂剪切操作的遮罩材质（仔细基准测试）、样条网格和程序化网格组件
+- Nanite 支持的内容取决于引擎版本。较新的 UE5 版本支持蒙皮网格（`r.Nanite.AllowSkinnedMeshes`）和样条网格（`r.Nanite.AllowSplineMeshes`），但旧版本不支持。在围绕某种网格类型规划 Nanite 之前，先查阅你所用引擎版本的发行说明。带有复杂剪切操作的遮罩材质仍需基准测试，程序化网格组件不能使用 Nanite
 - 在发布前始终在 Static Mesh Editor 中验证 Nanite 网格兼容性；在生产早期启用 `r.Nanite.Visualize` 模式以捕获问题
 - Nanite 最适合：密集植被、模块化建筑套件、岩石/地形细节，以及任何高面数静态几何体
 
@@ -81,6 +81,17 @@ public class MyGame : ModuleRules
 
 ### 属性集 — 生命值和体力
 ```cpp
+#include "AbilitySystemComponent.h" // 需要它，因为生成的 setter 会调用 ASC
+#include "AttributeSet.h"
+
+// 引擎没有定义这个宏。AttributeSet.h 只在注释中展示了它，
+// 因此每个项目自行定义一次。（较新的引擎版本也提供了现成版本，名为 ATTRIBUTE_ACCESSORS_BASIC。）
+#define ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
+    GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
+    GAMEPLAYATTRIBUTE_VALUE_GETTER(PropertyName) \
+    GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
+    GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
+
 UCLASS()
 class MYGAME_API UMyAttributeSet : public UAttributeSet
 {
