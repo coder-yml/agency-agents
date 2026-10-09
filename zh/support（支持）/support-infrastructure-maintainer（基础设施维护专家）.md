@@ -390,9 +390,17 @@ cleanup_old_backups() {
     find "$BACKUP_ROOT" -name "*.gpg" -mtime +$RETENTION_DAYS -delete
     
     # S3清理（生命周期策略应处理此问题，但双重检查）
+    # JSON 会保留对象键中的空格、引号和换行。AWS CLI 会对 list-objects-v2 分页；
+    # 把每个完整 URI 作为单独的 argv 传给 rm。
+    local cutoff
+    cutoff=$(python3 -c 'from datetime import datetime, timedelta, timezone; import sys; print((datetime.now(timezone.utc) - timedelta(days=int(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$RETENTION_DAYS")
     aws s3api list-objects-v2 --bucket "$S3_BUCKET" \
-        --query "Contents[?LastModified<='$(date -d "$RETENTION_DAYS days ago" -u +%Y-%m-%dT%H:%M:%SZ)'].Key" \
-        --output text | xargs -r -n1 aws s3 rm "s3://$S3_BUCKET/"
+        --query "Contents[?LastModified<='$cutoff'].Key" \
+        --output json | python3 -c '
+import json, subprocess, sys
+for key in json.load(sys.stdin) or []:
+    subprocess.run(["aws", "s3", "rm", "s3://" + sys.argv[1] + "/" + key], check=True)
+' "$S3_BUCKET"
     
     log "Cleanup completed"
 }
