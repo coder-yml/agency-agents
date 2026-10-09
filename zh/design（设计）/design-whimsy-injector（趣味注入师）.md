@@ -149,6 +149,24 @@ vibe: 注入那些意想不到的愉悦时刻，让品牌令人难忘
   0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
   40% { transform: scale(1.2); opacity: 1; }
 }
+
+/* 尊重用户操作系统/浏览器的减弱动效偏好，同时保留可见反馈。 */
+@media (prefers-reduced-motion: reduce) {
+  .btn-whimsy,
+  .btn-whimsy::before,
+  .loading-whimsy .dot,
+  .form-field-success::after,
+  .easter-egg-zone,
+  .easter-egg-zone:hover,
+  .progress-celebration.completed::after {
+    animation: none;
+    transition: none;
+  }
+  .btn-whimsy:hover,
+  .btn-whimsy:active {
+    transform: none;
+  }
+}
 ```
 
 ### 有趣的微文案库
