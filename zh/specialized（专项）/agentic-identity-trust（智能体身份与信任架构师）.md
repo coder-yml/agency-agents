@@ -165,6 +165,11 @@ class DelegationVerifier:
 ### 证据记录结构
 
 ```python
+from copy import deepcopy
+from datetime import datetime
+import hashlib
+import json
+
 class EvidenceRecord:
     """
     Append-only, tamper-evident record of an agent action.
@@ -185,9 +190,9 @@ class EvidenceRecord:
         record = {
             "agent_id": agent_id,
             "action_type": action_type,
-            "intent": intent,
+            "intent": deepcopy(intent),
             "decision": decision,
-            "outcome": outcome,
+            "outcome": deepcopy(outcome),
             "timestamp_utc": datetime.utcnow().isoformat(),
             "prev_record_hash": prev_hash,
         }
@@ -199,7 +204,9 @@ class EvidenceRecord:
         # Sign with agent's key
         record["signature"] = self.sign(canonical.encode())
 
-        self.append(record)
+        # 让调用方持有的输入和返回的记录独立于已存储的快照；
+        # 之后的修改不得使已签名的哈希失效。
+        self.append(deepcopy(record))
         return record
 ```
 

@@ -98,7 +98,7 @@ interface GraphDaemon {
 
 // Graph Schema Types
 interface GraphNode {
-  id: string;        // "file:src/foo.ts" or "sym:foo#method"
+  id: string;        // "file:src/foo.ts" 或 "sym:" + JSON.stringify([file, line, character, name])
   kind: 'file' | 'module' | 'class' | 'function' | 'variable' | 'type';
   file?: string;     // Parent file path
   range?: Range;     // LSP Range for symbol location
@@ -182,8 +182,11 @@ class GraphBuilder {
     const symbolPromises = files.map(file => 
       this.extractSymbols(file).then(symbols => {
         for (const sym of symbols) {
+          // 名称会在文件和作用域之间重复。用定义位置作为身份，
+          // 之后解析引用时使用同一个 ID。
+          const symbolId = `sym:${JSON.stringify([file, sym.range.start.line, sym.range.start.character, sym.name])}`;
           graph.addNode({
-            id: `sym:${sym.name}`,
+            id: symbolId,
             kind: sym.kind,
             file: file,
             range: sym.range
@@ -192,7 +195,7 @@ class GraphBuilder {
           // Add contains edge
           graph.addEdge({
             source: `file:${file}`,
-            target: `sym:${sym.name}`,
+            target: symbolId,
             type: 'contains'
           });
         }
@@ -210,18 +213,14 @@ class GraphBuilder {
 ```
 
 ### 导航索引格式
+
+图节点、导航记录、引用和悬停数据使用同一个定义位置 ID。每一行 JSONL 都是一条完整记录。
 ```jsonl
-{"symId":"sym:AppController","def":{"uri":"file:///src/controllers/app.php","l":10,"c":6}}
-{"symId":"sym:AppController","refs":[
-  {"uri":"file:///src/routes.php","l":5,"c":10},
-  {"uri":"file:///tests/app.test.php","l":15,"c":20}
-]}
-{"symId":"sym:AppController","hover":{"contents":{"kind":"markdown","value":"```php\nclass AppController extends BaseController\n```\nMain application controller"}}}
-{"symId":"sym:useState","def":{"uri":"file:///node_modules/react/index.d.ts","l":1234,"c":17}}
-{"symId":"sym:useState","refs":[
-  {"uri":"file:///src/App.tsx","l":3,"c":10},
-  {"uri":"file:///src/components/Header.tsx","l":2,"c":10}
-]}
+{"symId":"sym:[\"src/controllers/app.php\",10,6,\"AppController\"]","def":{"uri":"file:///src/controllers/app.php","l":10,"c":6}}
+{"symId":"sym:[\"src/controllers/app.php\",10,6,\"AppController\"]","refs":[{"uri":"file:///src/routes.php","l":5,"c":10},{"uri":"file:///tests/app.test.php","l":15,"c":20}]}
+{"symId":"sym:[\"src/controllers/app.php\",10,6,\"AppController\"]","hover":{"contents":{"kind":"markdown","value":"```php\nclass AppController extends BaseController\n```\nMain application controller"}}}
+{"symId":"sym:[\"node_modules/react/index.d.ts\",1234,17,\"useState\"]","def":{"uri":"file:///node_modules/react/index.d.ts","l":1234,"c":17}}
+{"symId":"sym:[\"node_modules/react/index.d.ts\",1234,17,\"useState\"]","refs":[{"uri":"file:///src/App.tsx","l":3,"c":10},{"uri":"file:///src/components/Header.tsx","l":2,"c":10}]}
 ```
 
 ## 🔄 你的工作流程
