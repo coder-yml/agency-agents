@@ -558,14 +558,24 @@ logger.info({
   success:  true,
 });
 
-// 不应记录什么——脱敏敏感字段
+// 不应记录什么——在对象和数组的每一层脱敏敏感字段。
+// 基于键名的脱敏无法识别藏在任意自由文本值里的秘密。
 function sanitizeForLog(obj: Record<string, unknown>) {
   const SENSITIVE = ["password", "token", "secret", "key", "authorization", "cookie", "cpf", "card"];
-  return Object.fromEntries(
-    Object.entries(obj).map(([k, v]) =>
-      SENSITIVE.some(s => k.toLowerCase().includes(s)) ? [k, "[REDACTED]"] : [k, v]
-    )
-  );
+  const ancestors = new WeakSet<object>();
+  const redact = (value: unknown): unknown => {
+    if (value === null || typeof value !== 'object' || value instanceof Date) return value;
+    if (ancestors.has(value)) return '[Circular]';
+    ancestors.add(value);
+    const result = Array.isArray(value)
+      ? value.map(redact)
+      : Object.fromEntries(Object.entries(value).map(([k, v]) => [
+          k, SENSITIVE.some(s => k.toLowerCase().includes(s)) ? '[REDACTED]' : redact(v)
+        ]));
+    ancestors.delete(value); // 重复引用不一定是循环
+    return result;
+  };
+  return redact(obj);
 }
 ```
 
