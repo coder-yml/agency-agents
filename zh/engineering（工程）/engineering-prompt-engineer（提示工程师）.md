@@ -97,6 +97,8 @@ def test_prompt(user_input, expected, desc):
 
 ### Few-Shot 示例构建器
 ```python
+from xml.sax.saxutils import escape
+
 def build_few_shot_block(examples: list[dict]) -> str:
     """
     examples = [{"input": "...", "output": "..."}]
@@ -105,11 +107,14 @@ def build_few_shot_block(examples: list[dict]) -> str:
     lines = ["## Examples\n"]
     for i, ex in enumerate(examples, 1):
         lines.append(f"<example id='{i}'>")
-        lines.append(f"Input: {ex['input']}")
-        lines.append(f"Output: {ex['output']}")
+        # 字面量 XML 或类似标签的示例必须保持为文本，不能变成新的分隔符。
+        lines.append(f"Input: {escape(str(ex['input']))}")
+        lines.append(f"Output: {escape(str(ex['output']))}")
         lines.append("</example>\n")
     return "\n".join(lines)
 ```
+
+转义可以在输入或输出包含 `<`、`>` 或 `&` 时保持示例边界。这是结构编码，不是针对语义提示注入的防御；不可信示例在纳入系统提示之前仍需人工审查。
 
 ## 🔄 你的工作流程
 

@@ -41,7 +41,8 @@ vibe: 每一次按键都是一个分布式系统。要收敛，不要碰撞—�
 
 ```typescript
 // 合约：服务端为每个 op 分配 seq；客户端确认自己已应用的内容；
-// 恢复时重放缺口。由于设计如此，重复不可能发生（opId 去重）。
+// 恢复时重放缺口。服务端 opId 去重防止重复日志条目；
+// 客户端还必须单独忽略重放的投递，并拒绝序列缺口。
 class SyncConnection {
   private lastServerSeq = 0;                    // 本地已应用的最高 seq
   private pending = new Map<string, Op>();      // 已发送、尚未确认
@@ -66,9 +67,16 @@ class SyncConnection {
 
   private receive(msg: ServerMsg) {
     if (msg.type === 'op') {
-      this.lastServerSeq = msg.seq;                        // 服务端排序才是事实
-      this.pending.delete(msg.opId);                       // 我们自己 op 的确认，或者……
-      this.applyRemote(msg);                               // ……别人的，经过转换后应用
+      if (msg.seq <= this.lastServerSeq) return;           // 重放：已经应用过
+      if (msg.seq !== this.lastServerSeq + 1) {
+        // 保持连续游标：从最后已应用的 op 重新连接并重放。
+        // 关闭连接会触发现有的 onclose 重连路径。
+        this.ws.close();
+        return;
+      }
+      this.applyRemote(msg);                               // 可能抛错；先不要推进游标
+      this.lastServerSeq = msg.seq;
+      this.pending.delete(msg.opId);                       // 只有成功应用后才确认
     }
   }
 
@@ -93,16 +101,20 @@ class SyncConnection {
 ### 在线存在系统（短暂、TTL 范围、合并）
 
 ```typescript
-// Redis 支撑的在线存在：心跳刷新 TTL；静默意味着离开。
+// Redis 支撑的在线存在：每个同伴的心跳只刷新自己的 TTL。
+// 房间级 hash TTL 会在仍有人活跃时把已离开的同伴永远留下来。
 // 每个房间最多每秒广播约 10 次在线存在更新——合并，最后写入生效。
 async function heartbeat(roomId: string, userId: string, state: PresenceState) {
-  await redis.hset(`presence:${roomId}`, userId, JSON.stringify({
+  const peerKey = `presence:${encodeURIComponent(roomId)}:${encodeURIComponent(userId)}`;
+  await redis.set(peerKey, JSON.stringify({
     ...state,                    // 光标、选区、视口
     updatedAt: Date.now(),
-  }));
-  await redis.expire(`presence:${roomId}`, 60);            // 房间 GC
-  await redis.publish(`room:${roomId}:presence`, userId);  // 订阅者重新读取 hash
+  }), 'EX', 60);                                         // 原子写入值与同伴 TTL
+  await redis.publish(`room:${roomId}:presence`, userId);  // 订阅者 GET 这个同伴键
 }
+// 订阅者用同样编码的 peerKey，在每次收到 userId 后 GET；
+// 键过期表示同伴已离开。重新加入时使用应用自己的快照或下一次心跳；
+// 不要在每次房间更新时 SCAN 键空间。
 // 客户端规则：渲染 updatedAt 新鲜（< 30s）的同伴；其余淡出。
 // 在线存在感绝不会写入文档日志——不同通道，不同保证。
 ```

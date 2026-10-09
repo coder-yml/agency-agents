@@ -511,9 +511,17 @@ router.get('/login/feishu', (req, res) => {
 router.get('/callback/feishu', async (req, res) => {
   const { code, state } = req.query;
 
-  if (state !== req.session!.oauthState) {
+  const expectedState = req.session?.oauthState;
+  if (typeof code !== 'string' || !code ||
+      typeof state !== 'string' || !state ||
+      typeof expectedState !== 'string' || !expectedState ||
+      state !== expectedState) {
     return res.status(403).json({ error: 'State 不匹配 — 可能的 CSRF 攻击' });
   }
+  // 在第一次 await 之前消费本次请求的会话绑定。
+  // 如果回调可能加载各自的会话副本，还要在共享会话存储中原子地使 state 失效；
+  // 仅删除这个对象做不到这一点。
+  delete req.session!.oauthState;
 
   const tokenResp = await client.authen.oidcAccessToken.create({
     data: {

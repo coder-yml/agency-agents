@@ -106,7 +106,12 @@ const request = (options) => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(res.data);
         } else {
-          reject({ code: res.statusCode, message: res.data.message || '请求失败' });
+          // 错误体可能为空、纯文本或网关 HTML 页面。
+          // 不要在 success 回调里抛异常，否则 Promise 会一直 pending。
+          const message = res.data && typeof res.data === 'object' &&
+            typeof res.data.message === 'string' && res.data.message
+            ? res.data.message : '请求失败';
+          reject({ code: res.statusCode, message });
         }
       },
       fail: (err) => {
@@ -119,7 +124,8 @@ const request = (options) => {
 // 微信登录流程，服务端会话
 const login = async () => {
   const { code } = await wx.login();
-  const { data } = await request({
+  // request() 已经解析出 res.data；不要再拆第二层 data。
+  const data = await request({
     url: '/auth/wechat-login',
     method: 'POST',
     data: { code },

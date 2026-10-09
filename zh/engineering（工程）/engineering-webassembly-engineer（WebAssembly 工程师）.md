@@ -46,21 +46,18 @@ pub fn process_one(x: f64) -> f64 { x * x + 1.0 }   // 调用方在 JS 中循环
 
 // 正确的形状：把整个缓冲区交给模块，在 Wasm 内部循环，只跨越一次
 #[wasm_bindgen]
-pub fn process_batch(input: &[f64], output: &mut [f64]) {
-    for (i, &x) in input.iter().enumerate() {
-        output[i] = x * x + 1.0;                    // 热循环保持原生速度，留在模块内部
-    }
+pub fn process_batch(input: &[f64]) -> Box<[f64]> {
+    input.iter().map(|&x| x * x + 1.0).collect()
 }
 ```
 
 ```javascript
-// JS 端：操作指向 Wasm 线性内存的视图——每个元素零复制
-const inputPtr = wasm.alloc(n * 8);
-const input = new Float64Array(wasm.memory.buffer, inputPtr, n);
-input.set(sourceData);                 // 一次批量拷入
-wasm.process_batch(inputPtr, n);       // 一次边界跨越
-const result = new Float64Array(wasm.memory.buffer, outputPtr, n).slice(); // 一次批量拷出
-// 对 N 个元素只发生 3 次边界交互，而不是 N 次。这就是全部关键。
+// 使用生成的 wasm-bindgen 包装，而不是它内部的指针/长度 ABI。
+// 一次批量拷入 Wasm，一次返回 Float64Array；没有逐项调用。
+const result = wasm.process_batch(Float64Array.from(sourceData));
+// Rust 和 JS 约定同一份类型化数组输入，以及一个返回的类型化数组。
+// 零拷贝的原始内存 API 需要显式的分配器、输出指针、长度和清理契约；
+// 这个 wasm-bindgen 示例没有定义这些。
 ```
 
 ### “这适合 Wasm 吗？”决策表

@@ -69,18 +69,23 @@ export async function handleCallback(req: Request, session: Session) {
   const { code, state } = params(req);
   if (!session.auth || state !== session.auth.state) throw new AuthError('state_mismatch');
 
-  const tokens = await exchangeCode(code, session.auth.verifier); // includes PKCE verifier
+  // 在任何异步操作之前捕获并消费已验证的登录流程。
+  // 第二次回调不得再次交换；新的登录不得替换它的 nonce。
+  const auth = session.auth;
+  delete session.auth;
+  const tokens = await exchangeCode(code, auth.verifier);       // includes PKCE verifier
   const claims = await verifyIdToken(tokens.id_token, {
     issuer: 'https://idp.example.com',
     audience: process.env.OIDC_CLIENT_ID!,
     algorithms: ['RS256'],                                      // allowlist — never trust the header alone
   });
-  if (claims.nonce !== session.auth.nonce) throw new AuthError('nonce_mismatch');
+  if (claims.nonce !== auth.nonce) throw new AuthError('nonce_mismatch');
 
-  delete session.auth;                                          // one-time use
   return establishSession(claims.sub, claims.email);
 }
 ```
+
+对于共享或多进程会话存储，领取登录流程必须是该存储中的一次原子消费操作（并带有短 TTL），而不是未同步的读/删对。上面的内存示例在检查和消费之间没有异步间隙。交换失败后必须重新开始一次登录流程。
 
 ### 会话与令牌架构决策表
 
@@ -132,14 +137,27 @@ challengeStore.put(user.id, options.challenge, { ttlSeconds: 300 });
 ### 多租户授权：在应用之下实现隔离
 
 ```sql
--- Postgres row-level security: tenant scoping the ORM can't forget
+-- 使用受限的应用角色（不能是 superuser，也不能 BYPASSRLS）。
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON documents
-  USING (tenant_id = current_setting('app.tenant_id')::uuid);
+  USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+  WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 
--- Set from the AUTHENTICATED session at connection checkout — never from request input:
--- SET app.tenant_id = '<tenant uuid from the verified session>';
+-- 每个请求的全部查询都在同一条连接和同一个事务上运行。
+-- 用驱动的参数 API 绑定已认证的租户 UUID。
+BEGIN;
+SELECT set_config('app.tenant_id', CAST(:authenticated_tenant_id AS text), true);
+-- 在这里 SELECT/INSERT/UPDATE/DELETE documents，然后 COMMIT（出错则 ROLLBACK）。
+COMMIT;
+-- true 标志使上下文仅在事务内有效：连接池复用不会把上一个租户带进下一个请求。
+-- 缺少上下文时拒绝访问。
+-- FORCE 也会让表所有者受 RLS 约束；特权维护角色仍然可以绕过，
+-- 绝不能用于处理请求的连接。
+-- 请求调用的对象也必须使用调用方的受限权限：
+-- 避免特权 SECURITY DEFINER 函数和可以绕过 RLS 的视图所有者；
+-- 在支持的地方使用 security_invoker 视图。
 ```
 
 ## 🔄 你的工作流程
