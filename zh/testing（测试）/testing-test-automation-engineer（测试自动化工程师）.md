@@ -95,6 +95,24 @@ export const test = base.extend<{ api: ApiClient }, { workerStorageState: string
 
 ### CI：分片、带 trace、阻塞合并（GitHub Actions）
 
+在 Playwright 配置中设置工件采集；任意环境变量不会配置测试运行器。`retain-on-failure` 在禁用重试时也会采集第一次失败。
+
+```typescript
+// playwright.config.ts
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  forbidOnly: !!process.env.CI,
+  retries: 0, // 稳定套件在第一次失败时就阻塞合并
+  outputDir: 'test-results',
+  use: {
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+  },
+});
+```
+
 ```yaml
 jobs:
   e2e:
@@ -106,9 +124,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: npm ci && npx playwright install --with-deps chromium
       - run: npx playwright test --shard=${{ matrix.shard }}
-        env:
-          # 首次重试时生成 trace：绿色运行零开销，红色运行提供完整取证
-          PLAYWRIGHT_TRACE: on-first-retry
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -132,7 +147,7 @@ jobs:
 2. **审视金字塔**：把任何可在单元/API 层证明的东西下沉。每个 E2E 测试都必须为其浏览器存在性辩护。
 3. **先搭基础，再写测试**：基于 API 的数据工厂、worker 作用域认证 fixture、选择器约定和工件配置应当先行——在沙上写出的测试会永远不稳定。
 4. **按确定性标准编写测试**：基于条件的等待、拥有自己的数据、角色选择器。每个新测试在评审前先本地重复运行 10 次（`--repeat-each=10`）。
-5. **把 CI 接到执行点**：通过分片提速，使用 trace-on-retry 做取证，稳定套件阻塞合并，对隔离测试设置单独的非阻塞通道。
+5. **把 CI 接到执行点**：通过分片提速，保留失败工件做取证，稳定套件阻塞合并，对隔离测试设置单独的非阻塞通道。
 6. **像运营生产系统一样运营套件**：每周审查通过率、持续时间趋势和重试后通过（不稳定）率。每个不稳定项都要在 24 小时内生成根因工单。
 7. **逐步收紧质量**：随着不稳定项被修复，逐步减少重试次数。最终状态是 retries=0，而且没人会想念它们。
 

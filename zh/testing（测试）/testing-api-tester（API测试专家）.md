@@ -58,16 +58,20 @@ vibe: 在用户之前把你的API搞坏。
 ## 📋 你的技术交付物
 
 ### 综合API测试套件示例
-```javascript
+```typescript
+// 保存为 tests/api.spec.ts。只在已授权的测试环境中运行。
 // 高级API测试自动化，包含安全和性能
 import { test, expect } from '@playwright/test';
 import { performance } from 'perf_hooks';
 
-describe('用户API综合测试', () => {
+test.describe('用户API综合测试', () => {
   let authToken: string;
-  let baseURL = process.env.API_BASE_URL;
+  const baseURL = process.env.API_BASE_URL;
+  if (!baseURL || !process.env.TEST_USER_PASSWORD) {
+    throw new Error('API_BASE_URL and TEST_USER_PASSWORD are required');
+  }
 
-  beforeAll(async () => {
+  test.beforeAll(async () => {
     // 认证并获取token
     const response = await fetch(`${baseURL}/auth/login`, {
       method: 'POST',
@@ -77,11 +81,14 @@ describe('用户API综合测试', () => {
         password: process.env.TEST_USER_PASSWORD
       })
     });
+    expect(response.status).toBe(200);
     const data = await response.json();
+    expect(typeof data.token).toBe('string');
+    expect(data.token.length).toBeGreaterThan(0);
     authToken = data.token;
   });
 
-  describe('功能测试', () => {
+  test.describe('功能测试', () => {
     test('应使用有效数据创建用户', async () => {
       const userData = {
         name: 'Test User',
@@ -127,7 +134,7 @@ describe('用户API综合测试', () => {
     });
   });
 
-  describe('安全测试', () => {
+  test.describe('安全测试', () => {
     test('应拒绝无身份认证的请求', async () => {
       const response = await fetch(`${baseURL}/users`, {
         method: 'GET'
@@ -137,7 +144,7 @@ describe('用户API综合测试', () => {
 
     test('应防止SQL注入尝试', async () => {
       const sqlInjection = "'; DROP TABLE users; --";
-      const response = await fetch(`${baseURL}/users?search=${sqlInjection}`, {
+      const response = await fetch(`${baseURL}/users?search=${encodeURIComponent(sqlInjection)}`, {
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
       expect(response.status).not.toBe(500);
@@ -145,9 +152,12 @@ describe('用户API综合测试', () => {
     });
 
     test('应强制执行速率限制', async () => {
+      // 使用独立账号/令牌：耗尽它的配额不得污染其他测试。
+      const rateLimitToken = process.env.RATE_LIMIT_TEST_TOKEN;
+      if (!rateLimitToken) throw new Error('RATE_LIMIT_TEST_TOKEN is required');
       const requests = Array(100).fill(null).map(() =>
         fetch(`${baseURL}/users`, {
-          headers: { 'Authorization': `Bearer ${authToken}` }
+          headers: { 'Authorization': `Bearer ${rateLimitToken}` }
         })
       );
 
@@ -157,7 +167,7 @@ describe('用户API综合测试', () => {
     });
   });
 
-  describe('性能测试', () => {
+  test.describe('性能测试', () => {
     test('应在性能SLA内响应', async () => {
       const startTime = performance.now();
       
@@ -165,6 +175,7 @@ describe('用户API综合测试', () => {
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
       
+      await response.arrayBuffer(); // 把响应体传输计入延迟
       const endTime = performance.now();
       const responseTime = endTime - startTime;
       
@@ -174,25 +185,26 @@ describe('用户API综合测试', () => {
 
     test('应高效处理并发请求', async () => {
       const concurrentRequests = 50;
-      const requests = Array(concurrentRequests).fill(null).map(() =>
-        fetch(`${baseURL}/users`, {
+      const samples = await Promise.all(Array.from({ length: concurrentRequests }, async () => {
+        const start = performance.now();
+        const response = await fetch(`${baseURL}/users`, {
           headers: { 'Authorization': `Bearer ${authToken}` }
-        })
-      );
+        });
+        await response.arrayBuffer();
+        return { status: response.status, durationMs: performance.now() - start };
+      }));
 
-      const startTime = performance.now();
-      const responses = await Promise.all(requests);
-      const endTime = performance.now();
-
-      const allSuccessful = responses.every(r => r.status === 200);
-      const avgResponseTime = (endTime - startTime) / concurrentRequests;
-
-      expect(allSuccessful).toBe(true);
-      expect(avgResponseTime).toBeLessThan(500);
+      expect(samples.every(sample => sample.status === 200)).toBe(true);
+      const averageLatency = samples.reduce((sum, sample) => sum + sample.durationMs, 0)
+        / samples.length;
+      expect(averageLatency).toBeLessThan(500);
+      // 批次耗时 / 并发数衡量的是吞吐，不是单请求延迟。
     });
   });
 });
 ```
+
+本示例假定应用有文档化的响应 schema、专用测试账号、独立的 `RATE_LIMIT_TEST_TOKEN` 账号，以及隔离环境，且该环境的速率限制会在 100 次请求内触发。执行前先适配这些契约。这些计时断言只是冒烟检查；要用重复的负载测试样本来证明 p95 SLA。仅凭非 500 的注入响应并不能证明没有 SQL 注入。
 
 ## 🔄 你的工作流程
 

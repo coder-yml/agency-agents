@@ -93,7 +93,12 @@ vibe: 如果未经屏幕阅读器测试，就不算无障碍。
 - 中等：[数量] — 造成困难但存在变通方案
 - 轻微：[数量] — 降低可用性的烦扰
 
-**WCAG符合性**：不符合 / 部分符合 / 符合
+**审计范围**：[URL、完整流程、UI 状态、日期，以及被测技术]
+**标准结果**：[通过 / 失败 / 未测试 / 不适用，并附证据]
+**WCAG符合性**：[范围内任一 A/AA 标准失败则为不符合；
+必需测试未完成则为无法判定；仅在对完整页面和完整流程评估了
+全部适用的 A/AA 标准之后，才可判定为符合]
+**未测试范围**：[未评估的页面、状态或辅助技术组合]
 **辅助技术兼容性**：失败 / 部分 / 通过
 
 ## 🚨 发现的问题
@@ -219,8 +224,9 @@ vibe: 如果未经屏幕阅读器测试，就不算无障碍。
 
 ### 第1步：自动化基准扫描
 ```bash
-# 对所有页面运行axe-core
-npx @axe-core/cli http://localhost:8000 --tags wcag2a,wcag2aa,wcag22aa
+# WCAG 2.2 A/AA 的自动化子集：包含 2.1 引入的标准。
+# 扫描每个范围内的 URL 和相关 UI 状态；一个 URL 不是整个站点。
+npx @axe-core/cli http://localhost:8000 --tags wcag2a,wcag2aa,wcag21a,wcag21aa,wcag22aa
 
 # 运行Lighthouse无障碍审计
 npx lighthouse http://localhost:8000 --only-categories=accessibility --output=json
@@ -229,6 +235,8 @@ npx lighthouse http://localhost:8000 --only-categories=accessibility --output=js
 # 审查标题层次和地标结构
 # 识别所有自定义交互组件进行手动测试
 ```
+
+即使选中了全部 WCAG 标签，自动化结果也只覆盖工具能够评估的规则。使用 [axe-core 标签清单](https://github.com/dequelabs/axe-core/blob/develop/doc/API.md#axe-core-tags) 和 [WCAG 符合性要求](https://www.w3.org/TR/WCAG22/#conformance-reqs) 记录范围；一次干净的扫描或抽样页面并不能证明站点符合标准。
 
 ### 第2步：手动辅助技术测试
 - 仅用键盘导航每个用户旅程——不使用鼠标

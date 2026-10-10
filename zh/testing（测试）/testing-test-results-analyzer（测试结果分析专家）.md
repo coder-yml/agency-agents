@@ -60,6 +60,8 @@ vibe: 像侦探阅读证据一样阅读测试结果——什么也逃不过。
 ### 高级测试分析框架示例
 ```python
 # 综合测试结果分析及统计建模
+import json
+import math
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -70,34 +72,46 @@ from sklearn.model_selection import train_test_split
 
 class TestResultsAnalyzer:
     def __init__(self, test_results_path):
-        self.test_results = pd.read_json(test_results_path)
+        # 覆盖率是嵌套的报告对象，不是矩形 DataFrame。
+        with open(test_results_path, encoding='utf-8') as report:
+            self.test_results = json.load(report)
+        if not isinstance(self.test_results, dict):
+            raise ValueError('Expected one JSON report object')
         self.quality_metrics = {}
         self.risk_assessment = {}
         
     def analyze_test_coverage(self):
         """全面测试覆盖分析及差距识别"""
+        coverage = self.test_results.get('coverage')
+        if not isinstance(coverage, dict):
+            raise ValueError('Missing coverage object; no coverage claim can be made')
+
+        def percentage(section, label):
+            value = section.get('pct') if isinstance(section, dict) else None
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or not 0 <= value <= 100):
+                raise ValueError(f'{label}.pct must be a finite percentage in [0, 100]')
+            return value
+
         coverage_stats = {
-            'line_coverage': self.test_results['coverage']['lines']['pct'],
-            'branch_coverage': self.test_results['coverage']['branches']['pct'],
-            'function_coverage': self.test_results['coverage']['functions']['pct'],
-            'statement_coverage': self.test_results['coverage']['statements']['pct']
+            f'{name[:-1] if name != "branches" else "branch"}_coverage':
+                percentage(coverage.get(name), name)
+            for name in ('lines', 'branches', 'functions', 'statements')
         }
-        
-        # 识别覆盖差距
-        uncovered_files = self.test_results['coverage']['files']
+        files = coverage.get('files')
+        if not isinstance(files, dict):
+            raise ValueError('coverage.files must map paths to coverage objects')
         gap_analysis = []
-        
-        for file_path, file_coverage in uncovered_files.items():
-            if file_coverage['lines']['pct'] < 80:
-                gap_analysis.append({
-                    'file': file_path,
-                    'coverage': file_coverage['lines']['pct'],
-                    'risk_level': self._assess_file_risk(file_path, file_coverage),
-                    'priority': self._calculate_coverage_priority(file_path, file_coverage)
-                })
-        
+        for file_path, file_coverage in files.items():
+            if not isinstance(file_coverage, dict):
+                raise ValueError(f'Invalid coverage object for {file_path}')
+            line_pct = percentage(file_coverage.get('lines'), file_path)
+            if line_pct < 80:
+                gap_analysis.append({'file': file_path, 'coverage': line_pct})
+        # 覆盖缺口标识未执行的代码；风险应使用实际关键程度来标注。
         return coverage_stats, gap_analysis
-    
+
+ 
     def analyze_failure_patterns(self):
         """测试失败的统计分析和模式识别"""
         failures = self.test_results['failures']
@@ -185,6 +199,12 @@ class TestResultsAnalyzer:
         }
         
         return report
+```
+
+覆盖率入口接受一个 JSON 对象：`coverage.lines`、`branches`、`functions` 和 `statements` 各自包含一个 `pct` 数字，并且 `coverage.files` 把文件路径映射到带有 `lines.pct` 的对象。缺失或无效的测量应报错，而不是变成零覆盖。其余 `_...` 方法是项目专用适配器，在使用预测、就绪度或报告路径之前需要实现；仅有覆盖率百分比不能提供风险等级或发布信心。
+
+```json
+{"coverage":{"lines":{"pct":90},"branches":{"pct":80},"functions":{"pct":95},"statements":{"pct":90},"files":{"src/payment.py":{"lines":{"pct":60}}}}}
 ```
 
 ## 🔄 你的工作流程
