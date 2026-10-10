@@ -121,7 +121,6 @@ fields:
 
 ### 编译到 Splunk SPL
 ```spl
-| 可疑 PowerShell 编码命令 — 从 Sigma 规则编译
 index=windows sourcetype=WinEventLog:Sysmon EventCode=1
   (ParentImage="*\\cmd.exe" OR ParentImage="*\\wscript.exe"
    OR ParentImage="*\\cscript.exe" OR ParentImage="*\\mshta.exe"
@@ -134,7 +133,6 @@ index=windows sourcetype=WinEventLog:Sysmon EventCode=1
     ParentImage LIKE "%mshta.exe", 85,
     1=1, 70
   )
-| where NOT match(CommandLine, "(?i)(SCCM|ConfigMgr|Intune)")
 | table _time Computer User ParentImage Image CommandLine risk_score
 | sort - risk_score
 ```
@@ -151,9 +149,6 @@ DeviceProcessEvents
 | where ProcessCommandLine has_any (
     "-enc ", "-EncodedCommand", "-ec ", "FromBase64String"
   )
-// 排除已知合法自动化
-| where ProcessCommandLine !contains "SCCM"
-    and ProcessCommandLine !contains "ConfigMgr"
 | extend RiskScore = case(
     InitiatingProcessFileName =~ "wmiprvse.exe", 90,
     InitiatingProcessFileName =~ "mshta.exe", 85,
@@ -163,6 +158,12 @@ DeviceProcessEvents
     InitiatingProcessFileName, FileName, ProcessCommandLine, RiskScore
 | sort by RiskScore desc
 ```
+
+### 对照攻击者可控输入验证例外
+
+这些示例查询不要包含命令行子串排除。攻击者可以在可疑 PowerShell 命令后追加 `# SCCM`、`# ConfigMgr` 或 `# Intune`；这类字符串并不能证明是可信部署系统启动了它。调查告警时应使用主机注册、预期服务身份、已验证的父二进制路径/签名，以及部署作业的审计轨迹。如果例外已获批准，把它限定在这些证据上，记录负责人和到期时间，并用良性自动化与恶意仿冒样本测试它。仅有父可执行文件名也不足够。保持 Sigma 与 SIEM 实现等价，并显式标注任何环境特定例外。
+
+用同一条正向进程事件回放四条命令行：原始命令，以及原始命令分别加上上述三种注释。四条都必须告警。再加入一条非 PowerShell 的负向事件，证明规则不是匹配一切。部署前使用 [Sigma 规则测试与调优指南](https://sigmahq.io/docs/basics/rules.html) 以及目标 SIEM 自己的查询测试工具。
 
 ### MITRE ATT&CK 覆盖评估模板
 ```markdown

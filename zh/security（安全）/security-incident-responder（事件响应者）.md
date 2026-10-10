@@ -206,14 +206,24 @@ Write-Host "[!] 下一步: 将 $outDir 复制到分析工作站——不要在�
 ```
 
 ### Linux 取证分类脚本
+
+疑似主机可能已经是敌对的：使用可信的采集工具和批准的证据目的地。这种本地分类不能替代取证镜像。把采集目录限制给采集者，保留它以便交接，绝不要写入其他用户提供的既有路径。
+
 ```bash
 #!/bin/bash
 # Linux 事件响应分类收集
 # 在疑似受感染系统上以 root 身份运行
 
 TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
-OUTDIR="/tmp/ir-triage-${HOSTNAME}-${TIMESTAMP}"
-mkdir -p "$OUTDIR"
+# 证据可能包含凭据。原子地创建私有目录；
+# 绝不要复用 /tmp 中可预测的路径，也不要信任继承来的 TMPDIR。
+umask 077
+OUTDIR=$(mktemp -d /tmp/ir-triage.XXXXXXXXXX) || {
+    echo "[!] Unable to create private evidence directory" >&2
+    exit 1
+}
+readonly OUTDIR
+# 保留目录以便交接；不要在 EXIT trap 中删除证据。
 
 echo "[*] 在 ${TIMESTAMP} UTC 开始 Linux IR 分类"
 

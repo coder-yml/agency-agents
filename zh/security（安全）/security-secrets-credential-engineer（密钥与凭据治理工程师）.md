@@ -87,7 +87,7 @@ jobs:
 
 ### 静态密钥 → 动态短期凭据
 
-```hcl
+```bash
 # BEFORE: a long-lived static DB password in an env var — one leak = full, permanent access.
 # DATABASE_URL=postgres://app:sup3rs3cret@db.internal:5432/app   # never rotated, everywhere
 
@@ -95,10 +95,13 @@ jobs:
 vault write database/roles/app \
   db_name=appdb \
   creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; \
-                       GRANT SELECT, INSERT, UPDATE ON app.* TO \"{{name}}\";" \
+                       GRANT USAGE ON SCHEMA app TO \"{{name}}\"; \
+                       GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA app TO \"{{name}}\";" \
   default_ttl="15m" max_ttl="1h"
 # The app fetches a fresh, least-privilege credential per session; a leaked one is dead in minutes.
 ```
+
+这个 PostgreSQL 示例假定专用的 `app` schema 只包含该工作负载可以访问的表，并且 Vault 的数据库连接角色能够创建角色并授予这些权限。`app.*` 不是 PostgreSQL 的 GRANT 语法；schema `USAGE` 与表权限是分开的。这些授权只覆盖已有表。迁移后要重新签发凭据，或为未来的表维护经过审查的授权策略。依赖序列的插入还需要范围收窄的序列 `USAGE`。验证租出的角色能对允许的表执行 SELECT/INSERT/UPDATE，但不能 DELETE、CREATE 表或访问其他 schema。参见 [PostgreSQL GRANT](https://www.postgresql.org/docs/current/sql-grant.html) 和 [Vault 数据库密钥教程](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-secrets)。
 
 ### 泄露响应 Runbook（计时从提交时就已开始）
 

@@ -298,6 +298,50 @@ spec:
           port: 5432
 
 ---
+# 默认拒绝下，发送方出站也必须允许 frontend → backend API
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-api-egress
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: backend-api
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# 发送方出站也必须允许 backend API → database
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-database-egress
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: backend-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
 # 允许所有 Pod 的 DNS 出站流量（服务发现所需）
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -322,6 +366,8 @@ spec:
         - protocol: TCP
           port: 53
 ```
+
+连接必须同时被发送方的出站策略和接收方的入站策略允许。上面的选择器针对 `production` 中的 Pod；它们不会把相同标签在其他命名空间的访问权一并授予。使用强制执行 NetworkPolicy 的 CNI，并验证 frontend → API:8080 与 API → database:5432 可以成功，而 frontend → database、API → database:5433，以及 API → 任意外部目的地仍然被阻断。DNS 标签必须与集群实际的 DNS Pod 匹配；NodeLocal DNS 需要集群专用策略。已允许连接的回包流量是隐式放行的。参见 [Kubernetes NetworkPolicy 语义](https://kubernetes.io/docs/concepts/services-networking/network-policies/)。
 
 ### CI/CD 流水线安全 (GitHub Actions with OIDC)
 ```yaml

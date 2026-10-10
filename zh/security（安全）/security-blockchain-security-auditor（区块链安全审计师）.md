@@ -150,6 +150,12 @@ contract SecureLending {
     AggregatorV3Interface immutable priceFeed;
     uint256 constant MAX_ORACLE_STALENESS = 1 hours;
 
+    constructor(address feed) {
+        priceFeed = AggregatorV3Interface(feed);
+    }
+
+    // amount 使用抵押代币的基本单位。对于 USD/token 喂价，
+    // 结果是按抵押代币小数位数缩放后的 USD。
     function getCollateralValue(uint256 amount) public view returns (uint256) {
         (
             uint80 roundId,
@@ -164,10 +170,15 @@ contract SecureLending {
         require(updatedAt > block.timestamp - MAX_ORACLE_STALENESS, "Stale price");
         require(answeredInRound >= roundId, "Incomplete round");
 
-        return (amount * uint256(price)) / priceFeed.decimals();
+        uint8 feedDecimals = priceFeed.decimals();
+        require(feedDecimals <= 77, "Unsupported feed decimals");
+        // decimals() 是小数位数，不是缩放因子。
+        return (amount * uint256(price)) / (10 ** uint256(feedDecimals));
     }
 }
 ```
+
+在把抵押品价值与债务比较之前，先把两者归一到同一单位。对于一枚 18 位小数的代币（`amount = 1e18`），由 8 位小数喂价（`price = 2000e8`）定价为 $2,000 时，此函数返回 `2000e18`，而不是 `25000000000e18`。6 位小数代币会得到 `2000e6`；把它换算成债务资产的基本单位是另一步。两种精度以及零小数喂价都要测试，零小数喂价不得除以零。Solidity 的检查乘法在极端乘积上仍会回退；如果支持的输入范围可能溢出，生产代码应使用经过审查的全精度 `mulDiv`。使用 [Chainlink API 参考](https://docs.chain.link/data-feeds/api-reference) 核对喂价的报价资产和小数位数。
 
 ### 访问控制审计检查清单
 ```markdown
