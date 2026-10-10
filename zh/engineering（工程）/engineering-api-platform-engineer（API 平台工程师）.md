@@ -40,7 +40,11 @@ vibe: 公共 API 是你收不回去的承诺。把契约设计得像你要和它
 ### 契约优先的 OpenAPI（事实来源，在代码前审查）
 
 ```yaml
-# 规范就是契约。这里的一致性就是整个产品。
+# 一份完整的最小文档，可用于模式校验和 SDK 生成。
+openapi: 3.1.0
+info:
+  title: Orders API
+  version: 1.0.0
 paths:
   /v1/orders:
     post:
@@ -52,10 +56,23 @@ paths:
         content: { application/json: { schema: { $ref: '#/components/schemas/OrderCreate' } } }
       responses:
         '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
-        '429': { description: 受限, headers: { Retry-After: { schema: { type: integer } } } }
+        '429': { description: 受限, headers: { Retry-After: { description: 距离重试的秒数, schema: { type: integer, minimum: 0 } } } }
         default: { description: 错误, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 components:
   schemas:
+    OrderCreate:
+      type: object
+      required: [product_id, quantity]
+      properties:
+        product_id: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+    Order:
+      type: object
+      required: [id, product_id, quantity]
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
     Error:                          # 唯一的一种错误结构，处处复用——没有例外
       type: object
       required: [code, message]
@@ -63,8 +80,10 @@ components:
         code:      { type: string, example: rate_limit_exceeded }  # 稳定、可机器读取
         message:   { type: string, example: "API rate limit exceeded; retry after 30s" }
         details:   { type: object, description: "用于自我诊断的字段级或上下文细节" }
-        request_id:{ type: string, description: "把这个回传给支持团队——我们这边可追踪" }
+        request_id: { type: string, description: "把这个回传给支持团队——我们这边可追踪" }
 ```
+
+在生成客户端之前，用 OpenAPI 3.1 校验器校验整份文档：仅做 YAML 解析无法发现缺失的必需文档元数据或无法解析的 `$ref` 目标。这个最小示例定义了每一个被引用的 schema；在抽取更大契约时也要保持这一不变量。参见 [OpenAPI 3.1 规范](https://spec.openapis.org/oas/v3.1.1.html)。
 
 ### 向后兼容规则（记住这两列）
 

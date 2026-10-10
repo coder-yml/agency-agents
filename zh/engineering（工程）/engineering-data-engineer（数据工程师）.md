@@ -61,6 +61,7 @@ vibe: 构建将原始数据转化为可信赖、分析就绪资产的管道。
 
 ### Spark 管道（PySpark + Delta Lake）
 ```python
+from datetime import date
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, current_timestamp, sha2, concat_ws, lit
 from delta.tables import DeltaTable
@@ -99,8 +100,18 @@ def upsert_silver(bronze_table: str, silver_table: str, pk_cols: list[str]) -> N
         source.write.format("delta").mode("overwrite").save(silver_table)
 
 # ── Gold：聚合业务指标 ─────────────────────────────────────────
-def build_gold_daily_revenue(silver_orders: str, gold_table: str) -> None:
-    df = spark.read.format("delta").load(silver_orders)
+def build_gold_daily_revenue(
+    silver_orders: str, gold_table: str, start_date: date, end_date: date
+) -> None:
+    # 重算一个明确的半开 DATE 窗口，包含没有销售的日期。
+    # 从已完成行推导边界会在空数据日留下过期收入。
+    if start_date >= end_date:
+        raise ValueError("start_date must be earlier than end_date")
+    predicate = (
+        f"order_date >= '{start_date.isoformat()}' "
+        f"AND order_date < '{end_date.isoformat()}'"
+    )
+    df = spark.read.format("delta").load(silver_orders).filter(predicate)
     gold = df.filter(col("status") == "completed") \
              .groupBy("order_date", "region", "product_category") \
              .agg({"revenue": "sum", "order_id": "count"}) \
@@ -108,9 +119,11 @@ def build_gold_daily_revenue(silver_orders: str, gold_table: str) -> None:
              .withColumnRenamed("count(order_id)", "order_count") \
              .withColumn("_refreshed_at", current_timestamp())
     gold.write.format("delta").mode("overwrite") \
-        .option("replaceWhere", f"order_date >= '{gold['order_date'].min()}'") \
+        .option("replaceWhere", predicate) \
         .save(gold_table)
 ```
+
+针对所请求日期窗口的完整 Silver 快照运行 Gold 刷新，而不是针对部分事件批次。即使聚合结果为空，Delta `replaceWhere` 也会精确替换该窗口；窗口之外的日期必须保持不变。保持其默认的谓词约束检查开启。例如，在订单被退款后刷新 `[2026-09-01, 2026-09-02)`，必须移除旧的 9 月 1 日收入，同时保留 9 月 2 日及之后的结果。参见 [Delta 选择性覆盖](https://docs.delta.io/delta-batch/#selective-overwrite)。
 
 ### dbt 数据质量合约
 ```yaml

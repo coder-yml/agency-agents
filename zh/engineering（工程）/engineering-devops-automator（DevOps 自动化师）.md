@@ -171,14 +171,22 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
-  namespace           = "AWS/ApplicationELB"
-  period              = "120"
+  namespace           = "AWS/EC2"
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.app.name
+  }
+  # 与 EC2 基础监控的五分钟发布间隔一致。
+  period              = "300"
   statistic           = "Average"
   threshold           = "80"
-  
+  # 缺失的遥测是未知状态，不能当作 CPU 健康的证据。
+  treat_missing_data  = "missing"
+
   alarm_actions = [aws_sns_topic.alerts.arn]
 }
 ```
+
+启用告警前，对照实际发布的数据点确认其 namespace、指标名、维度和采样周期。`CPUUtilization` 属于 [AWS/EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html)，`AutoScalingGroupName` 用于选择本应用的实例。`AWS/ApplicationELB` 发布的是负载均衡器指标，不是实例 CPU。EC2 基础监控每五分钟发布一次；如果需要一分钟检测，请显式启用详细监控。把缺失数据视为未知，并单独监控遥测丢失。
 
 ### 监控和告警配置
 ```yaml

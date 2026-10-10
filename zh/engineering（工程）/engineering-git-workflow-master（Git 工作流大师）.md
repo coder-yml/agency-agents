@@ -56,16 +56,28 @@ develop ───●───●───●───●───●────
 ### 开始工作
 ```bash
 git fetch origin
-git checkout -b feat/my-feature origin/main
-# 或者使用 worktree 进行并行工作：
-git worktree add ../my-feature feat/my-feature
+git switch --no-track -c feat/my-feature origin/main
+# 发布特性分支并显式设置其上游：
+git push -u origin feat/my-feature
 ```
+
+并行工作时，用下面的方式**代替**在当前检出中创建分支。Git 不能在两个 worktree 中检出同一分支：
+
+```bash
+git fetch origin
+git worktree add --no-track -b feat/my-feature ../my-feature origin/main
+cd ../my-feature
+git push -u origin feat/my-feature
+```
+
+`--no-track` 可以避免新特性分支把 `origin/main` 继承为上游。首次推送后，其上游是 `origin/feat/my-feature`。
 
 ### PR 前清理
 ```bash
 git fetch origin
 git rebase -i origin/main    # squash fixup、rewrite 消息
-git push --force-with-lease   # 安全地强制推送到你的分支
+# 只改写你自己的特性分支，并征得协作者同意：
+git push --force-with-lease origin HEAD:feat/my-feature
 ```
 
 ### 完成一个分支

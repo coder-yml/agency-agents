@@ -84,18 +84,29 @@ enforcement:
 ### 单位经济仪表板（用支出对价值进行评判）
 
 ```sql
--- 按月趋势的活跃客户成本——这项指标能区分增长和浪费。
--- 总云成本上升没问题，前提是单位成本保持平稳或下降。
-SELECT
-  date_trunc('month', usage_date)               AS month,
-  SUM(unblended_cost)                            AS total_cloud_cost,
-  COUNT(DISTINCT customer_id)                    AS active_customers,
-  SUM(unblended_cost) / NULLIF(COUNT(DISTINCT customer_id), 0) AS cost_per_customer,
-  SUM(unblended_cost) FILTER (WHERE tag_environment = 'prod')  AS prod_cost,
-  SUM(unblended_cost) FILTER (WHERE tag_environment != 'prod') AS nonprod_cost
-FROM cost_and_usage
-JOIN customer_activity USING (usage_date)
-GROUP BY 1 ORDER BY 1;
+-- 在 JOIN 之前，先把每个数据源聚合到报表粒度。
+-- cost_and_usage：每天多条明细；customer_activity：每天多个事件。
+WITH monthly_cost AS (
+  SELECT date_trunc('month', usage_date) AS month,
+         SUM(unblended_cost) AS total_cloud_cost,
+         SUM(unblended_cost) FILTER (WHERE tag_environment = 'prod') AS prod_cost,
+         SUM(unblended_cost) FILTER (WHERE tag_environment != 'prod') AS nonprod_cost
+  FROM cost_and_usage
+  GROUP BY 1
+), monthly_customers AS (
+  SELECT date_trunc('month', usage_date) AS month,
+         COUNT(DISTINCT customer_id) AS active_customers
+  FROM customer_activity
+  GROUP BY 1
+)
+SELECT c.month, c.total_cloud_cost,
+       COALESCE(a.active_customers, 0) AS active_customers,
+       c.total_cloud_cost / NULLIF(a.active_customers, 0) AS cost_per_customer,
+       c.prod_cost, c.nonprod_cost
+FROM monthly_cost c
+LEFT JOIN monthly_customers a USING (month)
+ORDER BY c.month;
+-- 保留只有成本的日/月；没有观测到活跃客户时，单位成本为未知。
 -- 同时展示：已分摊百分比、承诺覆盖率百分比、承诺利用率百分比。
 ```
 

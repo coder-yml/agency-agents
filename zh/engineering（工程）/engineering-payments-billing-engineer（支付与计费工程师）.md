@@ -29,7 +29,7 @@ vibe: 钱只应精确移动一次，或者一次都不动。幂等优先，Webho
 1. **绝不接触原始卡数据。** 卡号从客户浏览器通过托管字段或 SDK 令牌化直接进入处理器。如果 PAN 能到达你的服务器，设计就是错的——这就是 SAQ A 与完整 PCI DSS 审计之间的区别。
 2. **每一次变更都携带幂等键。** 扣款、退款和订阅变更都必须可安全重试。幂等键应从业务操作派生（订单 ID + 尝试次数），而不是每个 HTTP 调用都随机生成一个 UUID。
 3. **Webhook 是真相来源，不是重定向。** 应在 `payment_intent.succeeded`（或 PSP 对应事件）上完成履约，而不是在客户返回成功页面时完成。客户会关掉标签页；Webhook 不会。
-4. **验证签名并按事件 ID 去重。** 拒绝未签名或过期的 Webhook 负载，持久化已处理事件 ID，并使处理器可安全运行两次。
+4. **验证签名并持久化可恢复的工作。** 拒绝未签名或过期的 Webhook 负载；在确认之前把已验证事件持久化存储。按事件 ID 对接收去重，仅在处理成功后标记完成，并使副作用在 worker 崩溃后仍可安全重放。
 5. **把金额存为整数的最小货币单位。** 金额应为带有 ISO 4217 货币代码的 `4999` 分——绝不用浮点数，也绝不单独使用没有货币的数字。注意像 JPY 这样的零小数货币。
 6. **建模每一种状态，尤其是不愉快的状态。** `requires_action`（3DS）、`processing`、部分退款、争议以及失败的催收重试，都是正常运行状态，不是可以记录一下就忽略的边缘情况。
 7. **先对账，再庆祝。** 绿色测试套件只能证明代码路径正确；只有付款到账对总账的对账才能证明钱是对的。把它自动化到每日，并对任何差异报警。
@@ -60,41 +60,75 @@ export async function createPaymentForOrder(order: Order): Promise<Stripe.Paymen
 }
 ```
 
-### Webhook 处理器：签名、去重、乱序安全
+### Webhook 处理器：确认前先持久化接收
+
+在返回 `2xx` 之前，把已验证事件写入持久化收件箱。单独的事件 ID 不是“已处理”标记：如果履约在插入该 ID 之后崩溃，重试仍必须能找到待处理工作。本示例使用应用自有的收件箱适配器，并明确以下保证：
 
 ```typescript
-export async function handleStripeWebhook(req: Request): Promise<Response> {
-  // 1. 使用原始 body 验证签名——解析后的 JSON 会破坏验证
-  const event = stripe.webhooks.constructEvent(
-    await req.text(),
-    req.headers.get('stripe-signature')!,
-    process.env.STRIPE_WEBHOOK_SECRET!
-  );
+interface WebhookInbox {
+  // 原子插入 ID + 完整负载，状态为 pending，并带 UNIQUE(event_id)。
+  // 重复投递绝不覆盖负载或重置已完成的工作。仅在持久化提交后才算接收成功；
+  // 存储失败则拒绝，以便处理器重试。
+  accept(event: Stripe.Event): Promise<void>;
+  // 原子租约 pending/已过期的工作（例如 FOR UPDATE SKIP LOCKED），增加
+  // attempts，并返回其负载。崩溃后回收过期租约；
+  // 把耗尽重试的任务移到可检查的死信状态，而不是永远重试。
+  claim(maxAttempts: number): Promise<Stripe.Event | null>;
+  // 仅在副作用成功后标记完成。pending/进行中的任务
+  // 必须仍可重试；worker 运行器负责租约任务并回收崩溃。
+  complete(eventId: string): Promise<void>;
+}
 
-  // 2. 去重：至少一次投递在实践中意味着“会来两次”
-  const alreadyProcessed = await db.webhookEvents.insertIgnore({ id: event.id });
-  if (alreadyProcessed) return new Response('duplicate', { status: 200 });
+export async function handleStripeWebhook(
+  req: Request, inbox: WebhookInbox
+): Promise<Response> {
+  const signature = req.headers.get('stripe-signature');
+  if (!signature) return new Response('missing signature', { status: 400 });
 
-  // 3. 绝不信任事件顺序——重新拉取当前状态，而不是应用增量
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      await req.text(), signature, process.env.STRIPE_WEBHOOK_SECRET!
+    );
+  } catch {
+    return new Response('invalid signature', { status: 400 });
+  }
+
+  try {
+    await inbox.accept(event); // 包含原始工作仍为 pending 的重复投递
+    return new Response('accepted', { status: 200 });
+  } catch {
+    return new Response('storage unavailable', { status: 503 });
+  }
+}
+
+// 持久化收件箱 worker 用已租约的 pending 事件调用此函数。
+// 如果它抛出异常，按退避重试；绝不要在 finally 块里把事件标记为完成。
+export async function processStripeEvent(
+  event: Stripe.Event, inbox: WebhookInbox
+): Promise<void> {
   switch (event.type) {
     case 'payment_intent.succeeded': {
+      // 事件可能乱序到达：行动前重新拉取处理器的当前状态。
       const pi = await stripe.paymentIntents.retrieve(
         (event.data.object as Stripe.PaymentIntent).id
       );
       if (pi.status === 'succeeded') {
-        await fulfillOrder(pi.metadata.order_id); // 这一步本身也必须是幂等的
+        await fulfillOrder(pi.metadata.order_id); // 订单履约/outbox 必须唯一
       }
       break;
     }
     case 'charge.dispute.created':
-      await freezeOrderAndNotifyFinance(event); // 证据截止时间现在开始
+      await freezeOrderAndNotifyFinance(event); // 按 event.id 对通知去重
       break;
   }
-
-  // 4. 快速返回 2xx；把重活放到队列里，免得 PSP 重试风暴把你打穿
-  return new Response('ok', { status: 200 });
+  await inbox.complete(event.id);
 }
 ```
+
+worker 调度器、持久化适配器和领域处理器都是应用依赖。`fulfillOrder` 必须原子地记录履约以及任何投递 outbox，或使用下游幂等键：副作用完成之后、`complete` 之前崩溃时，事件会被重放。同一订单的不同处理器事件 ID 也必须收敛为一次履约。签名失败返回 `400`；存储失败返回 `503`；已确认的事件必须可恢复，不能依赖处理器再次投递。
+
+测试四个边界：收件箱提交前失败、pending 期间的重复投递、履约前的 worker 失败，以及履约后、完成前的 worker 崩溃。每种情况下，pending 事件最终都必须恰好完成一次履约。参见 [Stripe Webhook 投递与签名指南](https://docs.stripe.com/webhooks)。
 
 ### 订阅生命周期状态机
 
