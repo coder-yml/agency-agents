@@ -247,9 +247,13 @@ class SupportAnalytics:
         """
         识别需要主动支持外展的客户
         """
+        # 匹配报表时间戳的时区；朴素时间报表保持朴素。
+        # 所有外展窗口复用同一个时刻。
+        now = datetime.now(tz=self.data['created_date'].dt.tz)
+
         # 近期多次提交工单的客户
         frequent_reporters = self.data[
-            self.data['created_date'] >= datetime.now() - timedelta(days=30)
+            self.data['created_date'] >= now - timedelta(days=30)
         ].groupby('customer_id').size()
         
         high_volume_customers = frequent_reporters[frequent_reporters >= 3].index.tolist()
@@ -257,13 +261,13 @@ class SupportAnalytics:
         # 低满意度评分客户
         low_satisfaction = self.data[
             (self.data['csat_score'] <= 3) & 
-            (self.data['created_date'] >= datetime.now() - timedelta(days=7))
+            (self.data['created_date'] >= now - timedelta(days=7))
         ]['customer_id'].unique()
         
         # 超过SLA未解决的工单客户
         overdue_tickets = self.data[
             (self.data['status'] != 'resolved') & 
-            (self.data['created_date'] <= datetime.now() - timedelta(hours=48))
+            (self.data['created_date'] <= now - timedelta(hours=48))
         ]['customer_id'].unique()
         
         return {

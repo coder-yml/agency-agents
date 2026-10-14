@@ -72,24 +72,27 @@ gdpr_compliance:
     
   data_categories:
     personal_identifiers:
-      - 姓名
-      - 电子邮件
-      - 电话号码
-      - IP地址
+      fields:
+        - 姓名
+        - 电子邮件
+        - 电话号码
+        - IP地址
       retention_period: "2年"
       legal_basis: "contract"
       
     behavioral_data:
-      - 网站交互
-      - 购买历史
-      - 偏好设置
+      fields:
+        - 网站交互
+        - 购买历史
+        - 偏好设置
       retention_period: "3年"
       legal_basis: "legitimate_interests"
       
     sensitive_data:
-      - 健康信息
-      - 财务数据
-      - 生物特征数据
+      fields:
+        - 健康信息
+        - 财务数据
+        - 生物特征数据
       retention_period: "1年"
       legal_basis: "explicit_consent"
       special_protection: true
