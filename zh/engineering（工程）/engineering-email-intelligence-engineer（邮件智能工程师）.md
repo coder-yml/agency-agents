@@ -183,6 +183,12 @@ def strip_quoted_content(body, parent_bodies):
     - Outlook XML 引用：带有特定 class 的嵌套 <div> 块
     """
     lines = body.split("\n")
+    parent_lines = {
+        line.strip()
+        for parent in parent_bodies
+        for line in parent.splitlines()
+        if line.strip()
+    }
     unique_lines = []
     in_quote_block = False
     
@@ -193,7 +199,11 @@ def strip_quoted_content(body, parent_bodies):
         if in_quote_block and not line.strip():
             in_quote_block = False
             continue
-        if not in_quote_block and not line.startswith(">"):
+        if not in_quote_block:
+            # 新出现的引文仍然是本消息的证据。仅当其文本与父消息重复时，
+            # 才移除带前缀引用的行。
+            if line.startswith(">") and line[1:].strip() in parent_lines:
+                continue
             unique_lines.append(line)
     
     return "\n".join(unique_lines)

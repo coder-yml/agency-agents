@@ -44,17 +44,18 @@ vibe: 每一次按键都是一个分布式系统。要收敛，不要碰撞—�
 // 恢复时重放缺口。服务端 opId 去重防止重复日志条目；
 // 客户端还必须单独忽略重放的投递，并拒绝序列缺口。
 class SyncConnection {
+  private ws?: WebSocket;                      // 在调用 connect() 之前不存在
   private lastServerSeq = 0;                    // 本地已应用的最高 seq
   private pending = new Map<string, Op>();      // 已发送、尚未确认
   private backoff = 500;
 
   connect() {
-    this.ws = new WebSocket(`${WS_URL}?resumeFrom=${this.lastServerSeq}`);
-    this.ws.onmessage = (e) => this.receive(JSON.parse(e.data));
-    this.ws.onclose = () => this.scheduleReconnect();
-    this.ws.onopen = () => {
+    const ws = this.ws = new WebSocket(`${WS_URL}?resumeFrom=${this.lastServerSeq}`);
+    ws.onmessage = (e) => this.receive(JSON.parse(e.data));
+    ws.onclose = () => this.scheduleReconnect();
+    ws.onopen = () => {
       this.backoff = 500;
-      this.pending.forEach((op) => this.ws.send(JSON.stringify(op))); // 安全：opId 去重
+      this.pending.forEach((op) => ws.send(JSON.stringify(op))); // 安全：opId 去重
     };
   }
 
@@ -62,7 +63,7 @@ class SyncConnection {
     const stamped = { ...op, opId: crypto.randomUUID() };  // 客户端生成身份
     this.pending.set(stamped.opId, stamped);
     this.queueLocally(stamped);                            // 乐观应用 + 离线队列
-    if (this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(stamped));
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(stamped));
   }
 
   private receive(msg: ServerMsg) {
@@ -71,7 +72,7 @@ class SyncConnection {
       if (msg.seq !== this.lastServerSeq + 1) {
         // 保持连续游标：从最后已应用的 op 重新连接并重放。
         // 关闭连接会触发现有的 onclose 重连路径。
-        this.ws.close();
+        this.ws?.close();
         return;
       }
       this.applyRemote(msg);                               // 可能抛错；先不要推进游标

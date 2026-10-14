@@ -539,12 +539,13 @@ export const CVPageViewportScaler: React.FC<ScalerProps> = ({
 
 ### 5. 可访问标记 PDF 与 PDF/A-2b 后处理流水线（`pikepdf` Python）
 
-使用 `pikepdf` 做非破坏性元数据后处理，附加 PDF/A-2b 和 PDF/UA-1 XMP 元数据包，强制 sRGB Output Intent，并为即时 Web 流式传输线性化：
+需要 `pikepdf[pdfa] >= 10.14`。更新描述性元数据，安装真实的 sRGB output intent，并且只有在 PDF/A-2b 保存校验器接受写出的文档后才返回字节。仅声明元数据并不能确立合规；此辅助函数不会确立或声明 PDF/UA-1 合规。
 
 ```python
 # pdf_post_processor.py
 import io
 import pikepdf
+from pikepdf import pdfa
 
 def post_process_pdf_a2b(
     pdf_bytes: bytes,
@@ -552,38 +553,22 @@ def post_process_pdf_a2b(
     author: str = "System",
     subject: str = "Standard Report"
 ) -> bytes:
-    """Post-process a Chromium tagged PDF into compliant PDF/A-2b and PDF/UA-1."""
-    pdf = pikepdf.open(io.BytesIO(pdf_bytes))
+    """返回已通过校验的 PDF/A-2b 候选，否则抛出 pdfa.PdfaError。"""
+    with pikepdf.open(io.BytesIO(pdf_bytes)) as pdf:
+        with pdf.open_metadata() as meta:
+            meta["dc:title"] = title
+            meta["dc:creator"] = [author]
+            meta["dc:description"] = subject
 
-    # 1. Update Document Info Dictionary
-    with pdf.open_metadata() as meta:
-        meta["dc:title"] = title
-        meta["dc:creator"] = [author]
-        meta["dc:description"] = subject
-        meta["pdfaid:part"] = "2"
-        meta["pdfaid:conformance"] = "B"
-        meta["pdfuaid:part"] = "1"
-
-    # 2. Attach sRGB Output Intent if not present
-    if "/OutputIntents" not in pdf.Root:
-        icc_profile_data = b"..." # Embed standard sRGB2014 ICC profile stream
-        icc_stream = pdf.make_stream(icc_profile_data)
-        icc_stream["/N"] = 3
-
-        output_intent = pdf.make_indirect({
-            "/Type": pikepdf.Name("/OutputIntent"),
-            "/S": pikepdf.Name("/GTS_PDFA1"),
-            "/OutputConditionIdentifier": pikepdf.String("sRGB IEC61966-2.1"),
-            "/Info": pikepdf.String("sRGB IEC61966-2.1"),
-            "/DestOutputProfile": icc_stream
-        })
-        pdf.Root["/OutputIntents"] = pdf.make_array([output_intent])
-
-    # 3. Save linearized (Fast Web View)
-    out_buf = io.BytesIO()
-    pdf.save(out_buf, linearize=True)
-    return out_buf.getvalue()
+        out_buf = io.BytesIO()
+        # save 会提供有效的内置 ICC 配置文件、准备元数据、
+        # 重新打开写出的字节，并拒绝违规或未检查的构造。
+        # 它不会嵌入缺失字体，也不会转换页面颜色或内容。
+        pdfa.save(pdf, out_buf, "2b", output_intent="sRGB", linearize=True)
+        return out_buf.getvalue()
 ```
+
+把 `pdfa.PdfaError` 当作失败的导出门禁处理，并保留其报告以便修复。用合适的转换器修复不受支持的内容，而不是在其上盖合规标识。在声称可访问性之前，使用 [veraPDF](https://verapdf.org/) 做权威的 PDF/A 校验，并单独走 PDF/UA 校验流程。参见 [pikepdf 的校验与修复契约](https://pikepdf.readthedocs.io/en/latest/topics/pdfa.html)。
 
 ### 6. 自动 PDF 矢量与文本完整性审计器（Python）
 
@@ -650,7 +635,7 @@ class PDFVectorIntegrityAuditor:
    - 等待 `document.fonts.ready`。
    - 调用 `page.pdf({ width, height, preferCSSPageSize: true, printBackground: true, tagged: true })`。
 5. **步骤 5：元数据后处理与审计门禁**：
-   - 将原始 PDF 通过 `pikepdf` 附加 PDF/A-2b 和 PDF/UA-1 XMP 元数据包。
+   - 将原始 PDF 送入已校验的 PDF/A-2b 保存门禁；修复失败项，并在声称 PDF/UA 可访问性之前独立校验。
    - 执行 `PDFVectorIntegrityAuditor` 以确认矢量文本操作符并验证零栅格化回退。
 
 ## 💭 你的沟通风格

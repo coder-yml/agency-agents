@@ -121,7 +121,7 @@ def validate_audio_file(file_path: str) -> dict:
         "ffprobe", "-v", "quiet",
         "-print_format", "json",
         "-show_streams", "-show_format",
-        str(path)
+        "-i", str(path)  // 把以连字符开头的文件名当作输入操作数。
     ], capture_output=True, text=True, check=True)
 
     probe = json.loads(result.stdout)
@@ -171,7 +171,7 @@ def preprocess_audio(input_path: str, output_path: str) -> str:
         "-ar", "16000",               # 16kHz 采样率
         "-ac", "1",                   # 单声道
         "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",  # EBU R128 响度归一化
-        output_path
+        str(Path(output_path).absolute())  # 输出路径不能看起来像选项。
     ]
     subprocess.run(cmd, check=True, capture_output=True)
     return output_path
@@ -191,7 +191,7 @@ def chunk_audio(input_path: str, chunk_dir: str,
     import math, os
     result = subprocess.run([
         "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", input_path
+        "-of", "default=noprint_wrappers=1:nokey=1", "-i", input_path
     ], capture_output=True, text=True, check=True)
     total_duration = float(result.stdout.strip())
 
@@ -209,7 +209,7 @@ def chunk_audio(input_path: str, chunk_dir: str,
             "-ss", str(start),
             "-to", str(end),
             "-acodec", "copy",
-            out_path
+            str(Path(out_path).absolute())
         ], check=True, capture_output=True)
         chunks.append({"path": out_path, "start_offset": start, "index": chunk_index})
         start += chunk_duration

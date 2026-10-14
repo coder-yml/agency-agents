@@ -159,7 +159,7 @@ $$S_{\text{bullet}} = \left( w_X \cdot S_X + w_Y \cdot S_Y + w_Z \cdot S_Z \righ
 - 当 PDF 编译期间子集化字体却未嵌入 `/ToUnicode` CMap 字典时，字符代码会映射到任意内部字形索引或 Unicode 专用区（PUA）码点（`\uE000`–`\uF8FF`）。
 - **检测正则**：
   ```typescript
-  const PUA_REGEX = /[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u{100000}-\u{10FFFD}]/u;
+  const PUA_REGEX = /[\uE000-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u;
   ```
   若在提取的文本流中检测到，文档已损坏，在 Workday/Taleo 中将不可搜索。
 
