@@ -161,17 +161,25 @@ class ThemeManager {
   }
 
   getStoredTheme() {
-    const stored = localStorage.getItem('theme');
-    return stored === 'dark' || stored === 'light' ? stored : null;
+    try {
+      const stored = localStorage.getItem('theme');
+      return stored === 'dark' || stored === 'light' ? stored : null;
+    } catch {
+      return null; // 沙箱或受限环境中存储可能不可用。
+    }
   }
 
   applyTheme(theme) {
     if (theme === 'system') {
       document.documentElement.removeAttribute('data-theme');
-      localStorage.removeItem('theme');
     } else {
       document.documentElement.setAttribute('data-theme', theme);
-      localStorage.setItem('theme', theme);
+    }
+    try {
+      if (theme === 'system') localStorage.removeItem('theme');
+      else localStorage.setItem('theme', theme);
+    } catch {
+      // 即使浏览器存储不可用，也应用所选主题。
     }
     this.currentTheme = theme;
     this.updateToggleUI();

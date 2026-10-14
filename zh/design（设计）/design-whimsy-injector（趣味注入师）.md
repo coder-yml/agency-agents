@@ -272,11 +272,51 @@ class EasterEggManager {
         this.triggerKonamiEgg();
       }
     });
+
+    // 基于点击的彩蛋
+    let clickSequence = [];
+    document.addEventListener('click', (e) => {
+      // 区域内的图标和标签会从自身元素冒泡点击事件。
+      const zone = e.target instanceof Element
+        ? e.target.closest('.easter-egg-zone')
+        : null;
+      if (zone) {
+        clickSequence.push(Date.now());
+        clickSequence = clickSequence.filter(time => Date.now() - time < 2000);
+
+        if (clickSequence.length >= 5) {
+          this.triggerClickEgg();
+          clickSequence = [];
+        }
+      }
+    });
   }
 
   triggerKonamiEgg() {
     document.body.classList.add('rainbow-mode');
     setTimeout(() => document.body.classList.remove('rainbow-mode'), 10000);
+  }
+
+  triggerClickEgg() {
+    // 创建漂浮 emoji 动画
+    const emojis = ['🎉', '✨', '🎊', '🌟', '💫'];
+    for (let i = 0; i < 15; i++) {
+      setTimeout(() => {
+        this.createFloatingEmoji(emojis[Math.floor(Math.random() * emojis.length)]);
+      }, i * 100);
+    }
+  }
+
+  createFloatingEmoji(emoji) {
+    const element = document.createElement('div');
+    element.textContent = emoji;
+    element.className = 'floating-emoji';
+    element.style.left = Math.random() * window.innerWidth + 'px';
+    element.style.animationDuration = (Math.random() * 2 + 2) + 's';
+
+    document.body.appendChild(element);
+
+    setTimeout(() => element.remove(), 4000);
   }
 }
 ```
