@@ -51,7 +51,7 @@ export function generateSprintNudge(pendingTasks: Task[], userProfile: UserPsych
   
   // 标准用户的标准执行
   return {
-    channel: 'EMAIL',
+    channel: userProfile.preferredChannel,
     message: `你有 ${pendingTasks.length} 个待处理项目。这里是最高优先级: ${pendingTasks[0].title}.`
   };
 }
