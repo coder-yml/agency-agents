@@ -206,10 +206,11 @@ class ToolEvaluator:
         # 响应时间测试
         response_times = []
         for _ in range(10):
-            start_time = time.time()
+            # 系统时钟校正不得改变测得的延迟。
+            start_time = time.perf_counter()
             try:
                 response = requests.get(api_endpoint, timeout=10)
-                end_time = time.time()
+                end_time = time.perf_counter()
                 response_times.append(end_time - start_time)
             except requests.RequestException:
                 response_times.append(10.0)  # 超时惩罚
