@@ -151,10 +151,16 @@ class LSPOrchestrator {
       return [];
     }
     
-    return client.sendRequest('textDocument/definition', {
+    const result = await client.sendRequest<Location | Location[] | LocationLink[] | null>('textDocument/definition', {
       textDocument: { uri },
       position
     });
+    // LSP 允许返回单个 Location、链接位置或 null，而不仅是数组。
+    if (result === null) return [];
+    const definitions = Array.isArray(result) ? result : [result];
+    return definitions.map(definition => 'targetUri' in definition
+      ? { uri: definition.targetUri, range: definition.targetSelectionRange }
+      : definition);
   }
 }
 ```

@@ -203,12 +203,15 @@ def hosmer_lemeshow_test(
 import shap
 import matplotlib.pyplot as plt
 
-def shap_global_analysis(model, X: pd.DataFrame, output_dir: str = "."):
+def shap_global_analysis(model, X: pd.DataFrame, output_dir: str = ".",
+                         output_index: int = 1):
     """
     Global interpretability via SHAP values.
     Produces summary plot (beeswarm) and bar plot of mean |SHAP|.
     Works with tree-based models (XGBoost, LightGBM, RF) and
     falls back to KernelExplainer for other model types.
+    多输出模型解释所选输出（默认是二分类的正类）。
+    需要其他类别或输出时请显式选择；单输出回归保持不变。
     """
     try:
         explainer = shap.TreeExplainer(model)
@@ -219,9 +222,12 @@ def shap_global_analysis(model, X: pd.DataFrame, output_dir: str = "."):
 
     shap_values = explainer.shap_values(X)
 
-    # If multi-output, take positive class
+    # SHAP >= 0.45 返回输出轴，而不是旧式列表。
+    # 在绘图和求平均之前先选择，使每个特征只有一份归因。
     if isinstance(shap_values, list):
-        shap_values = shap_values[1]
+        shap_values = shap_values[output_index]
+    elif shap_values.ndim == 3:
+        shap_values = shap_values[..., output_index]
 
     # Beeswarm: shows value direction + magnitude per feature
     shap.summary_plot(shap_values, X, show=False)
@@ -244,11 +250,13 @@ def shap_global_analysis(model, X: pd.DataFrame, output_dir: str = "."):
     return importance
 
 
-def shap_local_explanation(model, X: pd.DataFrame, idx: int):
+def shap_local_explanation(model, X: pd.DataFrame, idx: int,
+                           output_index: int = 1):
     """
     Local interpretability: explain a single prediction.
     Produces a waterfall plot showing how each feature pushed
     the prediction from the base value.
+    多输出模型使用与全局分析相同的所选输出。
     """
     try:
         explainer = shap.TreeExplainer(model)
@@ -258,6 +266,9 @@ def shap_local_explanation(model, X: pd.DataFrame, idx: int):
         )
 
     explanation = explainer(X.iloc[[idx]])
+    if explanation.values.ndim == 3:
+        # 切片整个 Explanation，使基准值和数据保持对齐。
+        explanation = explanation[..., output_index]
     shap.plots.waterfall(explanation[0], show=False)
     plt.tight_layout()
     plt.savefig(f"shap_waterfall_obs_{idx}.png", dpi=150)
@@ -335,6 +346,8 @@ def variable_stability_report(
     Flags variables exceeding PSI threshold vs. the first observed period.
     """
     periods = sorted(df[date_col].unique())
+    if len(periods) < 2:
+        raise ValueError("Stability reporting requires a baseline and an observed period")
     baseline = df[df[date_col] == periods[0]]
 
     results = []
