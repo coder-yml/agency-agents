@@ -4,6 +4,12 @@ Qwen Code 使用 `.qwen/agents/` 中的项目范围 `.md` SubAgent 文件。
 
 生成的文件来自 `scripts/convert.sh --tool qwen`，它为每个 agency 代理写入一个 SubAgent Markdown 文件到 `integrations/qwen/agents/`。
 
+## 要求
+
+Qwen Code **0.25.1 或更高版本**。更早的版本会把 SubAgent 提示词中的每一个 `${name}` 都当作待填充的值，并在没有对应值时拒绝启动代理（"Missing context values for the following keys: …"）。有几个代理在代码示例中使用了 `${name}`，因此在这些版本上无法启动。从 0.25.1 起，Qwen 会原样保留任何未填充的 `${name}`（[#1081](https://github.com/msitarzewski/agency-agents/issues/1081)）。
+
+Qwen 会填充三个名称：`${task_prompt}`、`${hook_context}` 和 `${external_inputs_override}`。`scripts/lint-agents.sh` 会拒绝代理正文中出现这些名称，因此启动时不会替换任何代理文本。
+
 ## 生成
 
 从仓库根目录：

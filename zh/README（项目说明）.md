@@ -1000,6 +1000,8 @@ Use the Reality Checker agent to verify this is production ready.
 
 SubAgents 会安装到项目根目录下的 `.qwen/agents/` 中（项目级作用域）。
 
+> 需要 Qwen Code 0.25.1 或更高版本。更早的版本无法启动代码示例中包含 `${…}` 占位符的 agent（[#1081](https://github.com/msitarzewski/agency-agents/issues/1081)）。
+
 ```bash
 # 转换并安装（在项目根目录运行）
 cd /your/project
