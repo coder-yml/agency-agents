@@ -473,7 +473,7 @@ async function createApprovalInstance(params: {
 // 查询审批实例详情
 async function getApprovalInstance(instanceCode: string) {
   const resp = await client.approval.instance.get({
-    params: { instance_id: instanceCode },
+    path: { instance_id: instanceCode },
   });
 
   if (resp.code !== 0) {

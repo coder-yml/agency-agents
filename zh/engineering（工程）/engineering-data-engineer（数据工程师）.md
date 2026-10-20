@@ -59,11 +59,11 @@ vibe: 构建将原始数据转化为可信赖、分析就绪资产的管道。
 
 ## 📋 你的技术交付物
 
-### Spark 管道（PySpark + Delta Lake）
+### Spark 管道（开源 PySpark + Delta Lake）
 ```python
 from datetime import date
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, sha2, concat_ws, lit
+from pyspark.sql.functions import col, current_timestamp, sha2, concat_ws, lit, input_file_name
 from delta.tables import DeltaTable
 
 spark = SparkSession.builder \
@@ -76,7 +76,7 @@ def ingest_bronze(source_path: str, bronze_table: str, source_system: str) -> in
     df = spark.read.format("json").option("inferSchema", "true").load(source_path)
     df = df.withColumn("_ingested_at", current_timestamp()) \
            .withColumn("_source_system", lit(source_system)) \
-           .withColumn("_source_file", col("_metadata.file_path"))
+           .withColumn("_source_file", input_file_name())
     df.write.format("delta").mode("append").option("mergeSchema", "true").save(bronze_table)
     return df.count()
 
@@ -122,6 +122,8 @@ def build_gold_daily_revenue(
         .option("replaceWhere", predicate) \
         .save(gold_table)
 ```
+
+`_source_file` 必须描述 Spark 实际读取的文件，而不是名为 `_metadata.file_path` 的载荷字段。这个开源 Spark 示例使用 [PySpark `input_file_name`](https://spark.apache.org/docs/3.5.6/api/python/reference/pyspark.sql/api/pyspark.sql.functions.input_file_name.html)，因此包含 `_metadata` 的源 JSON 不能替换物理文件 URI。请按你部署的运行时调整溯源方式；[Databricks 文件元数据 API](https://docs.databricks.com/aws/en/ingestion/file-metadata-column) 也记录了与名为 `_metadata` 的源列发生冲突的情况。
 
 针对所请求日期窗口的完整 Silver 快照运行 Gold 刷新，而不是针对部分事件批次。即使聚合结果为空，Delta `replaceWhere` 也会精确替换该窗口；窗口之外的日期必须保持不变。保持其默认的谓词约束检查开启。例如，在订单被退款后刷新 `[2026-09-01, 2026-09-02)`，必须移除旧的 9 月 1 日收入，同时保留 9 月 2 日及之后的结果。参见 [Delta 选择性覆盖](https://docs.delta.io/delta-batch/#selective-overwrite)。
 
