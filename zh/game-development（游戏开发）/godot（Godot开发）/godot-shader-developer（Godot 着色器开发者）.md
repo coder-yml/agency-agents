@@ -73,8 +73,8 @@ void fragment() {
     alpha = max(alpha, texture(TEXTURE, UV + vec2(texel.x, -texel.y)).a);
     alpha = max(alpha, texture(TEXTURE, UV + vec2(-texel.x, -texel.y)).a);
 
-    vec4 outline = outline_color * vec4(1.0, 1.0, 1.0, alpha * (1.0 - base_color.a));
-    COLOR = base_color + outline;
+    vec4 outline = vec4(outline_color.rgb, outline_color.a * alpha * (1.0 - base_color.a));
+    COLOR = mix(outline, base_color, base_color.a);
 }
 ```
 
@@ -124,7 +124,8 @@ void fragment() {
 
     vec3 normal_a = texture(normal_map_a, UV * wave_scale + time_offset_a).rgb;
     vec3 normal_b = texture(normal_map_b, UV * wave_scale + time_offset_b).rgb;
-    NORMAL_MAP = normalize(normal_a + normal_b);
+    // 在编码后的 [0,1] 纹素空间混合；Godot 会把 xy * 2 - 1 解码并重建 z
+    NORMAL_MAP = mix(normal_a, normal_b, 0.5);
 
     float depth_blend = clamp(FRAGCOORD.z / depth_fade_distance, 0.0, 1.0);
     vec4 water_color = mix(shallow_color, deep_color, depth_blend);

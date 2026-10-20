@@ -99,6 +99,8 @@ public class PlayerController : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        // 从出生点初始化权威位置，而不是 Vector3.zero
+        if (IsServer) _serverPosition.Value = transform.position;
         if (!IsOwner) return;
         _clientPredictedPosition = transform.position;
     }

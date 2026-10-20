@@ -91,6 +91,7 @@ local Players = game:GetService("Players")
 local DataManager = {}
 local playerDataStore = DataStoreService:GetDataStore("PlayerData_v1")
 local loadedData: {[number]: any} = {}
+local loadFailed: {[number]: boolean} = {}
 
 local DEFAULT_DATA = { coins = 0, level = 1, inventory = {} }
 
@@ -110,13 +111,24 @@ function DataManager.loadPlayerData(player: Player): ()
     local success, data = retryAsync(function()
         return playerDataStore:GetAsync(key)
     end, 3)
-    loadedData[player.UserId] = success and (data or deepCopy(DEFAULT_DATA)) or deepCopy(DEFAULT_DATA)
+    if success then
+        loadedData[player.UserId] = data or deepCopy(DEFAULT_DATA)
+    else
+        warn("[DataManager] Failed to load data for", player.Name, "- using defaults")
+        loadedData[player.UserId] = deepCopy(DEFAULT_DATA)
+        loadFailed[player.UserId] = true  -- 绝不能把默认值写回未能读取的数据
+    end
 end
 
 function DataManager.savePlayerData(player: Player): ()
     local key = "player_" .. player.UserId
     local data = loadedData[player.UserId]
     if not data then return end
+    if loadFailed[player.UserId] then
+        loadFailed[player.UserId] = nil
+        loadedData[player.UserId] = nil
+        return
+    end
     local success, err = retryAsync(function()
         playerDataStore:SetAsync(key, data)
     end, 3)

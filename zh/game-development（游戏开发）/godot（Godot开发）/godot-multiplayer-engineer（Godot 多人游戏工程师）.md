@@ -126,8 +126,13 @@ func send_input(direction: Vector2) -> void:
     velocity = direction.normalized() * 200.0
     move_and_slide()
 
-@rpc("authority", "reliable", "call_local")
+# 服务器向所有客户端确认命中。该节点的权限属于其拥有者客户端，
+# 因此接受来自任意 peer 的调用，但只保留服务器的调用。
+@rpc("any_peer", "reliable", "call_local")
 func take_damage(amount: float) -> void:
+    var sender_id := multiplayer.get_remote_sender_id()
+    if sender_id != 0 and sender_id != MultiplayerPeer.TARGET_PEER_SERVER:
+        return  # 拒绝：只有服务器（peer 1）可以造成伤害
     _health -= amount
     if _health <= 0.0:
         _on_died()
