@@ -223,6 +223,11 @@ on:
     branches: [main]
     paths: ['detections/**/*.yml']
 
+defaults:
+  run:
+    # bash 默认关闭 globstar，因此 detections/**/*.yml 只会匹配一层目录
+    shell: bash -O globstar -eo pipefail {0}
+
 jobs:
   validate:
     name: Validate Sigma Rules
@@ -270,6 +275,7 @@ jobs:
             pySigma-backend-splunk \
             pySigma-backend-microsoft365defender \
             pySigma-backend-elasticsearch
+          mkdir -p compiled/splunk compiled/sentinel compiled/elastic
 
       - name: Compile to Splunk
         run: |

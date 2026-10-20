@@ -82,7 +82,9 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }   # full history so an old leak is caught too
       - uses: gitleaks/gitleaks-action@v2
-        env: { GITLEAKS_CONFIG: .gitleaks.toml }  # allowlist known-public test fixtures
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # action 扫描 pull_request 事件所需
+          GITLEAKS_CONFIG: .gitleaks.toml            # allowlist known-public test fixtures
 ```
 
 ### 静态密钥 → 动态短期凭据

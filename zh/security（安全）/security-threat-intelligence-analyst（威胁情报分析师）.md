@@ -494,16 +494,16 @@ class IOCEnrichmentPipeline:
         results = []
 
         for raw in raw_indicators:
-            ioc_type = self.classifier.classify(raw)
+            value = raw.strip()
+            ioc_type = self.classifier.classify(value)
             if ioc_type is None:
                 continue  # 跳过未识别的指标
 
             # 跳过私有 IP
             if ioc_type in (IOCType.IPV4, IOCType.IPV6):
-                if self.classifier.is_private_ip(raw):
+                if self.classifier.is_private_ip(value):
                     continue
 
-            value = raw.strip()
             if ioc_type != IOCType.URL:
                 value = value.lower()
 
