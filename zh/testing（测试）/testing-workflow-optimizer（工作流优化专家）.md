@@ -189,7 +189,7 @@ class WorkflowOptimizer:
     
     def calculate_improvement_impact(self, current_metrics: WorkflowMetrics, 
                                    optimized_metrics: WorkflowMetrics) -> Dict:
-        """计算量化改进影响"""
+        """计算影响；成本基线为零时，百分比没有定义。"""
         improvements = {
             "cycle_time_reduction": {
                 "absolute": current_metrics.total_cycle_time - optimized_metrics.total_cycle_time,
@@ -198,8 +198,11 @@ class WorkflowOptimizer:
             },
             "cost_reduction": {
                 "absolute": current_metrics.cost_per_execution - optimized_metrics.cost_per_execution,
-                "percentage": ((current_metrics.cost_per_execution - optimized_metrics.cost_per_execution)
-                              / current_metrics.cost_per_execution) * 100
+                "percentage": (
+                    ((current_metrics.cost_per_execution - optimized_metrics.cost_per_execution)
+                     / current_metrics.cost_per_execution) * 100
+                    if current_metrics.cost_per_execution != 0 else None
+                )
             },
             "quality_improvement": {
                 "absolute": current_metrics.error_rate - optimized_metrics.error_rate,
