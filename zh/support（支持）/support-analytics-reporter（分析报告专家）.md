@@ -119,10 +119,16 @@ def customer_segmentation_analysis(df):
         'revenue': 'monetary'
     })
     
-    # 创建RFM评分
-    rfm['r_score'] = pd.qcut(rfm['recency'], 5, labels=[5,4,3,2,1])
-    rfm['f_score'] = pd.qcut(rfm['frequency'].rank(method='first'), 5, labels=[1,2,3,4,5])
-    rfm['m_score'] = pd.qcut(rfm['monetary'], 5, labels=[1,2,3,4,5])
+    # 百分位分档能容忍稀疏群组，并把相同取值放在一起。
+    # 这些是该群组内的相对评分，不是绝对数值阈值。
+    def score(values, higher_is_better=True):
+        percentile = values.rank(method='average', pct=True)
+        band = np.ceil(percentile * 5).clip(1, 5).astype(int)
+        return band if higher_is_better else 6 - band
+
+    rfm['r_score'] = score(rfm['recency'], higher_is_better=False)
+    rfm['f_score'] = score(rfm['frequency'])
+    rfm['m_score'] = score(rfm['monetary'])
     
     # 客户细分
     rfm['rfm_score'] = rfm['r_score'].astype(str) + rfm['f_score'].astype(str) + rfm['m_score'].astype(str)
@@ -170,25 +176,31 @@ def generate_customer_insights(rfm_df):
 // 营销归因和ROI分析
 const marketingDashboard = {
   // 多点归因模型
+  // conversions.conversion_id 与 marketing_touchpoints.touchpoint_id 是唯一 ID。
+  // 每次转化有自己的路径；两次触点平分收入。
   attributionAnalysis: `
     WITH customer_touchpoints AS (
       SELECT 
-        customer_id,
-        channel,
-        campaign,
-        touchpoint_date,
-        conversion_date,
-        revenue,
-        ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY touchpoint_date) as touch_sequence,
-        COUNT(*) OVER (PARTITION BY customer_id) as total_touches
+        c.conversion_id,
+        mt.customer_id,
+        mt.channel,
+        mt.campaign,
+        mt.touchpoint_date,
+        c.conversion_date,
+        c.revenue,
+        ROW_NUMBER() OVER (
+          PARTITION BY c.conversion_id ORDER BY mt.touchpoint_date, mt.touchpoint_id
+        ) as touch_sequence,
+        COUNT(*) OVER (PARTITION BY c.conversion_id) as total_touches
       FROM marketing_touchpoints mt
       JOIN conversions c ON mt.customer_id = c.customer_id
-      WHERE touchpoint_date <= conversion_date
+      WHERE mt.touchpoint_date <= c.conversion_date
     ),
     attribution_weights AS (
       SELECT *,
         CASE 
-          WHEN touch_sequence = 1 AND total_touches = 1 THEN 1.0  -- 单一触点
+          WHEN total_touches = 1 THEN 1.0                        -- 单次触点
+          WHEN total_touches = 2 THEN 0.5                        -- 两次触点路径
           WHEN touch_sequence = 1 THEN 0.4                       -- 首次触点
           WHEN touch_sequence = total_touches THEN 0.4           -- 末次触点
           ELSE 0.2 / (total_touches - 2)                        -- 中间触点
@@ -199,8 +211,8 @@ const marketingDashboard = {
       channel,
       campaign,
       SUM(revenue * attribution_weight) as attributed_revenue,
-      COUNT(DISTINCT customer_id) as attributed_conversions,
-      SUM(revenue * attribution_weight) / COUNT(DISTINCT customer_id) as revenue_per_conversion
+      COUNT(DISTINCT conversion_id) as attributed_conversions,
+      SUM(revenue * attribution_weight) / COUNT(DISTINCT conversion_id) as revenue_per_conversion
     FROM attribution_weights
     GROUP BY channel, campaign
     ORDER BY attributed_revenue DESC;
