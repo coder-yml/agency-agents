@@ -678,5 +678,9 @@
   "DX Engineer": {
     "name": "DX 工程师",
     "description": "SDK 示例、上手流程、错误信息与开发者体验专家"
+  },
+  "Electrical Engineer": {
+    "name": "电气工程师",
+    "description": "电信站点电力系统、直流电源选型、接地防雷，以及可执行的电气校验规则"
   }
 }

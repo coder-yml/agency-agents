@@ -190,6 +190,7 @@ for r in json.load(open("strategy/runbooks.json"))["runbooks"]:
 | 🎯 [ATS Validator Architect](engineering（工程）/engineering-ats-validator-architect（ATS%20校验架构师）.md) | 简历可解析性、ATS 摄入流水线 | BM25/TF-IDF 相关性评分、版面线性化审计、EU AI Act 与 NYC LL144 合规 |
 | 📑 [Universal Document Compiler](engineering（工程）/engineering-universal-document-compiler（通用文档编译器）.md) | 无 schema 文档 AST、数据形状版面推断、分页发布 | 把任意 YAML 树编译成提案、技术规格和高管档案 |
 | 🛠️ [ServiceNow Developer & Mentor](engineering（工程）/engineering-servicenow-developer-mentor（ServiceNow%20开发导师）.md) | Business Rules、Script Includes、GlideAjax、ACL、Flow Designer | ServiceNow 开发，以及逐步排查实例问题 |
+| ⚡ [Electrical Engineer](engineering（工程）/engineering-electrical-engineer（电气工程师）.md) | 电信直流电源、电缆、蓄电池、发电机、接地与防雷 | 站点电力评估、工程量清单与图纸审查、面向工程平台的电气校验规则 |
 
 ### 🎨 设计分部
 
