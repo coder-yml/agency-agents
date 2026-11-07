@@ -187,6 +187,63 @@ class WorkflowOptimizer:
         
         return opportunities
     
+    def design_optimized_workflow(self, current_steps: List[ProcessStep], 
+                                 opportunities: List[Dict]) -> List[ProcessStep]:
+        """创建优化后的未来状态工作流"""
+        optimized_steps = current_steps.copy()
+        
+        for opportunity in opportunities:
+            step_name = opportunity["step"]
+            # 对照原始名称解析；先前的改进会重命名副本。
+            step_index = next(
+                i for i, step in enumerate(current_steps)
+                if step.name == step_name
+            )
+            
+            current_step = optimized_steps[step_index]
+            
+            if opportunity["type"] == "automation":
+                # 通过自动化缩短时长并降低成本
+                new_duration = current_step.duration_minutes * (1 - current_step.automation_potential * 0.8)
+                new_cost = current_step.cost_per_hour * 0.3  # 自动化降低人工成本
+                new_error_rate = current_step.error_rate * 0.2  # 自动化降低错误
+                
+                optimized_steps[step_index] = ProcessStep(
+                    name=f"{current_step.name} (Automated)",
+                    duration_minutes=new_duration,
+                    cost_per_hour=new_cost,
+                    error_rate=new_error_rate,
+                    automation_potential=0.1,  # 已经自动化
+                    bottleneck_severity=max(1, current_step.bottleneck_severity - 2),
+                    user_satisfaction=min(10, current_step.user_satisfaction + 2)
+                )
+            
+            elif opportunity["type"] == "quality_improvement":
+                # 通过流程改进降低错误率
+                optimized_steps[step_index] = ProcessStep(
+                    name=f"{current_step.name} (Improved)",
+                    duration_minutes=current_step.duration_minutes * 1.1,  # 为了质量略微增加
+                    cost_per_hour=current_step.cost_per_hour,
+                    error_rate=current_step.error_rate * 0.3,  # 显著降低错误
+                    automation_potential=current_step.automation_potential,
+                    bottleneck_severity=current_step.bottleneck_severity,
+                    user_satisfaction=min(10, current_step.user_satisfaction + 1)
+                )
+            
+            elif opportunity["type"] == "bottleneck_resolution":
+                # 通过资源优化消除瓶颈
+                optimized_steps[step_index] = ProcessStep(
+                    name=f"{current_step.name} (Optimized)",
+                    duration_minutes=current_step.duration_minutes * 0.6,  # 缩短瓶颈时间
+                    cost_per_hour=current_step.cost_per_hour * 1.2,  # 更高技能的资源
+                    error_rate=current_step.error_rate,
+                    automation_potential=current_step.automation_potential,
+                    bottleneck_severity=1,  # 瓶颈已消除
+                    user_satisfaction=min(10, current_step.user_satisfaction + 2)
+                )
+        
+        return optimized_steps
+    
     def calculate_improvement_impact(self, current_metrics: WorkflowMetrics, 
                                    optimized_metrics: WorkflowMetrics) -> Dict:
         """计算影响；成本基线为零时，百分比没有定义。"""
@@ -222,6 +279,67 @@ class WorkflowOptimizer:
         }
         
         return improvements
+    
+    def generate_automation_strategy(self, process_steps: List[ProcessStep]) -> Dict:
+        """创建全面的自动化策略"""
+        automation_candidates = [
+            step for step in process_steps 
+            if step.automation_potential > 0.5
+        ]
+        
+        automation_tools = {
+            "data_entry": "RPA (UiPath, Automation Anywhere)",
+            "document_processing": "OCR + AI (Adobe Document Services)",
+            "approval_workflows": "Workflow automation (Zapier, Microsoft Power Automate)",
+            "data_validation": "Custom scripts + API integration",
+            "reporting": "Business Intelligence tools (Power BI, Tableau)",
+            "communication": "Chatbots + integration platforms"
+        }
+        
+        implementation_strategy = {
+            "automation_candidates": [
+                {
+                    "step": step.name,
+                    "potential": step.automation_potential,
+                    "estimated_savings_hours_month": (step.duration_minutes / 60) * 22 * step.automation_potential * 0.8,
+                    "recommended_tool": "RPA platform",  # 示例中已简化
+                    "implementation_effort": "Medium"
+                }
+                for step in automation_candidates
+            ],
+            "total_monthly_savings": sum(
+                (step.duration_minutes / 60) * 22 * step.automation_potential * 0.8
+                for step in automation_candidates
+            ),
+            "roi_timeline_months": 6
+        }
+        
+        return implementation_strategy
+```
+
+回归检查（在上方类之后运行）：估算使用设计者的 80% 实现系数，并假设每月执行 22 次，而不是实测的业务节省。
+
+```python
+optimizer = WorkflowOptimizer()
+steps = [
+    ProcessStep("Data entry", 60, 60, 0, 1.0, 1, 8),
+    ProcessStep("Reporting", 30, 60, 0, 0.8, 1, 8),
+    ProcessStep("Manual review", 20, 60, 0, 0.5, 1, 8),
+]
+optimized = optimizer.design_optimized_workflow(
+    steps, optimizer.identify_optimization_opportunities(steps)
+)
+strategy = optimizer.generate_automation_strategy(steps)
+expected_savings = [
+    (before.duration_minutes - after.duration_minutes) / 60 * 22
+    for before, after in zip(steps[:2], optimized[:2])
+]
+assert np.allclose(
+    [item["estimated_savings_hours_month"] for item in strategy["automation_candidates"]],
+    expected_savings,
+)
+assert np.isclose(strategy["total_monthly_savings"], sum(expected_savings))
+assert optimizer.generate_automation_strategy(steps[2:])["total_monthly_savings"] == 0
 ```
 
 ## 🔄 你的工作流程
