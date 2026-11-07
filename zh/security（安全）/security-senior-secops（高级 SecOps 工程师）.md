@@ -423,6 +423,14 @@ res.json({ message: "Authenticated" });     // 响应体中无 Token
 ### HTTP 安全头 (Nginx)
 
 ```nginx
+# add_header 只在子级完全没有声明 add_header 时才从父级继承，因此在嵌套
+# location 中写入 Cache-Control 会恰好在认证路由上丢掉上方的全部安全头。
+# 改为在 server 级通过 map 应用（map 放在 http 块中）。
+map $uri $cache_control {
+    ~^/api/auth/  "no-store";
+    default       "";
+}
+
 server {
     # 强制 HTTPS (1年 + 子域 + 预加载)
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
@@ -442,13 +450,15 @@ server {
     # CSP — 调整脚本/样式源以匹配你的 CDN
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none';" always;
 
-    # 认证路由禁止缓存
-    location /api/auth/ {
-        add_header Cache-Control "no-store" always;
-    }
+    # 认证路由禁止缓存（其他路径为空，因此那里会省略该头）
+    add_header Cache-Control $cache_control always;
 
     # 移除服务器版本
     server_tokens off;
+
+    location /api/auth/ {
+        # 认证处理；这里不要写 add_header — 见上方 map
+    }
 }
 ```
 
