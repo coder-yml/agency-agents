@@ -65,29 +65,32 @@ vibe: 构建像素级精准的响应式、无障碍 Web 应用。
 
 ### 现代 React 组件示例
 ```tsx
-// 具有性能优化的现代 React 组件
-import React, { memo, useCallback, useMemo } from 'react';
+// 可渲染的单元格值和稳定 ID 使示例自包含。
+import React, { memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+type Row = { id: string } & Record<string, React.ReactNode>;
+
+interface Column {
+  key: string;
+  header: string;
+}
+
 interface DataTableProps {
-  data: Array<Record<string, any>>;
+  data: Row[];
   columns: Column[];
-  onRowClick?: (row: any) => void;
+  onRowClick?: (row: Row) => void;
 }
 
 export const DataTable = memo<DataTableProps>(({ data, columns, onRowClick }) => {
   const parentRef = React.useRef<HTMLDivElement>(null);
-  
   const rowVirtualizer = useVirtualizer({
     count: data.length,
     getScrollElement: () => parentRef.current,
+    getItemKey: (index) => data[index].id,
     estimateSize: () => 50,
     overscan: 5,
   });
-
-  const handleRowClick = useCallback((row: any) => {
-    onRowClick?.(row);
-  }, [onRowClick]);
 
   return (
     <div
@@ -95,27 +98,48 @@ export const DataTable = memo<DataTableProps>(({ data, columns, onRowClick }) =>
       className="h-96 overflow-auto"
       role="table"
       aria-label="Data table"
+      aria-rowcount={data.length + 1}
+      tabIndex={0}
     >
+      <div role="row" aria-rowindex={1} className="flex font-bold">
+        {columns.map((column) => (
+          <div key={column.key} role="columnheader" className="px-4 py-2 flex-1">
+            {column.header}
+          </div>
+        ))}
+        {onRowClick && <div role="columnheader" className="px-4 py-2">Actions</div>}
+      </div>
       <div role="rowgroup" style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
         {rowVirtualizer.getVirtualItems().map((virtualItem) => {
           const row = data[virtualItem.index];
           return (
             <div
               key={virtualItem.key}
-              className="flex items-center border-b hover:bg-gray-50 cursor-pointer"
+              className="flex items-center border-b hover:bg-gray-50"
               style={{
                 position: 'absolute', top: 0, left: 0, width: '100%',
                 height: virtualItem.size, transform: `translateY(${virtualItem.start}px)`,
               }}
-              onClick={() => handleRowClick(row)}
               role="row"
-              tabIndex={0}
+              aria-rowindex={virtualItem.index + 2}
             >
               {columns.map((column) => (
                 <div key={column.key} className="px-4 py-2 flex-1" role="cell">
                   {row[column.key]}
                 </div>
               ))}
+              {onRowClick && (
+                <div role="cell" className="px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => onRowClick(row)}
+                    aria-label={`Open row ${virtualItem.index + 1}`}
+                    className="underline focus-visible:outline focus-visible:outline-2"
+                  >
+                    Open
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -124,6 +148,8 @@ export const DataTable = memo<DataTableProps>(({ data, columns, onRowClick }) =>
   );
 });
 ```
+
+使用唯一、稳定的行 ID 和可渲染的单元格值。每个操作单元格内的原生按钮提供鼠标、Enter 和 Space 激活，而不让表格行伪装成按钮；参见 [WAI-ARIA table 模式](https://www.w3.org/WAI/ARIA/apg/patterns/table/)。滚动容器可通过键盘聚焦，行数和行索引描述部分渲染的数据。虚拟化仍需用目标辅助技术测试；当用户需要可靠地导航所有行时，提供分页或非虚拟化视图。
 
 ## 🔄 你的工作流程
 

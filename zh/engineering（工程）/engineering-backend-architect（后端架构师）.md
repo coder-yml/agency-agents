@@ -134,6 +134,12 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email) WHERE deleted_at IS NULL;
 CREATE INDEX idx_users_created_at ON users(created_at);
 
+-- 分类必须先存在，产品才能引用它们
+CREATE TABLE categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL
+);
+
 -- 产品表，有适当的规范化
 CREATE TABLE products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

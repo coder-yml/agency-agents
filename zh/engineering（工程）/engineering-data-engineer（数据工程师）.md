@@ -81,19 +81,45 @@ def ingest_bronze(source_path: str, bronze_table: str, source_system: str) -> in
     return df.count()
 
 # ── Silver：清洗、去重、规范化 ────────────────────────────────────
-def upsert_silver(bronze_table: str, silver_table: str, pk_cols: list[str]) -> None:
-    source = spark.read.format("delta").load(bronze_table)
-    # 去重：根据摄入时间保留每个主键的最新记录
+def upsert_silver(
+    bronze_table: str, silver_table: str, pk_cols: list[str], version_col: str
+) -> None:
     from pyspark.sql.window import Window
-    from pyspark.sql.functions import row_number, desc
-    w = Window.partitionBy(*pk_cols).orderBy(desc("_ingested_at"))
+    from pyspark.sql.functions import row_number, desc, countDistinct, struct
+    from pyspark.sql.types import ByteType, ShortType, IntegerType, LongType
+
+    source = spark.read.format("delta").load(bronze_table)
+    required = set(pk_cols + [version_col, "_ingested_at", "_source_file"])
+    if not pk_cols or not required.issubset(source.columns):
+        raise ValueError("Provide primary keys, a source version, and ingestion metadata")
+    if not isinstance(source.schema[version_col].dataType,
+                      (ByteType, ShortType, IntegerType, LongType)):
+        raise ValueError("Source versions must be integers, not arrival timestamps")
+    invalid = col(version_col).isNull()
+    for key in pk_cols:
+        invalid = invalid | col(key).isNull()
+    if source.filter(invalid).limit(1).count():
+        raise ValueError("Primary keys and source versions must not be null")
+
+    # 重放的摄入元数据可以不同，但载荷必须一致。
+    payload_cols = [c for c in source.columns if c not in ("_ingested_at", "_source_file")]
+    conflicts = source.groupBy(*pk_cols, version_col).agg(
+        countDistinct(struct(*[col(c) for c in payload_cols])).alias("_variants")
+    ).filter(col("_variants") > 1)
+    if conflicts.limit(1).count():
+        raise ValueError("Conflicting payloads share a primary key and source version")
+
+    # 源版本确立业务顺序；摄入元数据只用于打破重放平局。
+    w = Window.partitionBy(*pk_cols).orderBy(
+        desc(version_col), desc("_ingested_at"), desc("_source_file")
+    )
     source = source.withColumn("_rank", row_number().over(w)).filter(col("_rank") == 1).drop("_rank")
 
     if DeltaTable.isDeltaTable(spark, silver_table):
         target = DeltaTable.forPath(spark, silver_table)
         merge_condition = " AND ".join([f"target.{c} = source.{c}" for c in pk_cols])
         target.alias("target").merge(source.alias("source"), merge_condition) \
-            .whenMatchedUpdateAll() \
+            .whenMatchedUpdateAll(condition=f"source.{version_col} > target.{version_col}") \
             .whenNotMatchedInsertAll() \
             .execute()
     else:
@@ -124,6 +150,8 @@ def build_gold_daily_revenue(
 ```
 
 `_source_file` 必须描述 Spark 实际读取的文件，而不是名为 `_metadata.file_path` 的载荷字段。这个开源 Spark 示例使用 [PySpark `input_file_name`](https://spark.apache.org/docs/3.5.6/api/python/reference/pyspark.sql/api/pyspark.sql.functions.input_file_name.html)，因此包含 `_metadata` 的源 JSON 不能替换物理文件 URI。请按你部署的运行时调整溯源方式；[Databricks 文件元数据 API](https://docs.databricks.com/aws/en/ingestion/file-metadata-column) 也记录了与名为 `_metadata` 的源列发生冲突的情况。
+
+调用 Silver 时传入源系统拥有的整数版本，例如 `upsert_silver(bronze_path, silver_path, ["order_id"], "order_version")`。版本必须随每个主键递增且永不重置；摄入时间戳或随机事件 ID 不能确立业务顺序。本示例读取完整保留的 Bronze 历史，使用扁平标量载荷列和简单列名，并假定只有一个 Silver 写入者。当 ID 仅在该范围内唯一时，把源系统/租户标识纳入 `pk_cols`。相同重放可以被接受，但同一键/版本下的不同载荷会在写入前失败；应解决或隔离这些冲突，而不是发明一种排序。合并只更新更新的版本，因此延迟到达的旧事件不能把 Silver 回滚。参见 [Delta Lake 合并语义与去重](https://docs.delta.io/delta-update/)。
 
 针对所请求日期窗口的完整 Silver 快照运行 Gold 刷新，而不是针对部分事件批次。即使聚合结果为空，Delta `replaceWhere` 也会精确替换该窗口；窗口之外的日期必须保持不变。保持其默认的谓词约束检查开启。例如，在订单被退款后刷新 `[2026-09-01, 2026-09-02)`，必须移除旧的 9 月 1 日收入，同时保留 9 月 2 日及之后的结果。参见 [Delta 选择性覆盖](https://docs.delta.io/delta-batch/#selective-overwrite)。
 
