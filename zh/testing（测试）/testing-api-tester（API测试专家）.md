@@ -63,6 +63,7 @@ vibe: 在用户之前把你的API搞坏。
 // 高级API测试自动化，包含安全和性能
 import { test, expect } from '@playwright/test';
 import { performance } from 'perf_hooks';
+import { randomUUID } from 'node:crypto';
 
 test.describe('用户API综合测试', () => {
   let authToken: string;
@@ -92,7 +93,7 @@ test.describe('用户API综合测试', () => {
     test('应使用有效数据创建用户', async () => {
       const userData = {
         name: 'Test User',
-        email: 'new@example.com',
+        email: `api-test-${randomUUID()}@example.com`,
         role: 'user'
       };
 
@@ -105,10 +106,25 @@ test.describe('用户API综合测试', () => {
         body: JSON.stringify(userData)
       });
 
-      expect(response.status).toBe(201);
       const user = await response.json();
-      expect(user.email).toBe(userData.email);
-      expect(user.password).toBeUndefined(); // 不应返回密码
+      // 在断言之前捕获已创建的资源，这样检查失败时仍会清理。
+      const createdUserId = response.status === 201
+        && typeof user.id === 'string' && user.id.length > 0 ? user.id : undefined;
+      try {
+        expect(response.status).toBe(201);
+        expect(createdUserId).toBeDefined();
+        expect(user.email).toBe(userData.email);
+        expect(user.password).toBeUndefined(); // 不应返回密码
+      } finally {
+        if (createdUserId) {
+          const cleanup = await fetch(`${baseURL}/users/${encodeURIComponent(createdUserId)}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          });
+          // 已经不存在是安全的；授权或服务器错误必须让测试失败。
+          expect([204, 404]).toContain(cleanup.status);
+        }
+      }
     });
 
     test('应优雅处理无效输入', async () => {
@@ -204,7 +220,7 @@ test.describe('用户API综合测试', () => {
 });
 ```
 
-本示例假定应用有文档化的响应 schema、专用测试账号、独立的 `RATE_LIMIT_TEST_TOKEN` 账号，以及隔离环境，且该环境的速率限制会在 100 次请求内触发。执行前先适配这些契约。这些计时断言只是冒烟检查；要用重复的负载测试样本来证明 p95 SLA。仅凭非 500 的注入响应并不能证明没有 SQL 注入。
+本示例假定应用有文档化的响应 schema、专用测试账号、独立的 `RATE_LIMIT_TEST_TOKEN` 账号，以及隔离环境，且该环境的速率限制会在 100 次请求内触发。创建端点必须返回非空字符串 `id`；测试账号必须能通过 `DELETE /users/{id}` 删除该资源（204 表示已删除，404 表示已不存在）。每次尝试使用唯一邮箱，并在 `finally` 中清理返回的 ID，包括断言失败之后。没有 ID 的畸形创建响应、丢失的响应或被终止的 worker 需要环境级测试数据清理。执行前先适配这些契约。这些计时断言只是冒烟检查；要用重复的负载测试样本来证明 p95 SLA。仅凭非 500 的注入响应并不能证明没有 SQL 注入。
 
 ## 🔄 你的工作流程
 
